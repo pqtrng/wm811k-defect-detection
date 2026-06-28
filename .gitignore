@@ -1,8 +1,29 @@
-venv/
-data/
-models/*.pt
-models/*.pth
+# Python
 __pycache__/
 *.pyc
+
+# Virtual environment
+.venv/
+venv/
+
+# Jupyter
 .ipynb_checkpoints/
+
+# Data (regenerated from notebooks)
+data/
+
+# Models
+models/*.pt
+models/*.pth
+
+# MLflow
+mlflow.db
+**/mlflow.db
+mlartifacts/
+mlruns/
+
+# IDE
 .idea/
+
+# OS
+.DS_Store

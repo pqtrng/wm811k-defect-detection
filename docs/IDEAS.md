@@ -53,3 +53,34 @@ to wire, but reintroduces the imbalance problem we dropped `none` to avoid.
 
 **When.** Defer until the 8-class pipeline is solid. The current README must state
 the classification-only scope so the assumption is explicit.
+
+## 3. Inference-time prior correction
+
+**Context.** WeightedRandomSampler balances the classes during training so the
+model gets enough signal to learn every defect shape, including the rare ones
+(Near-full, 104 train samples). But a balanced training distribution is not the
+real fab distribution — Near-full is ~65x rarer than Edge-Ring in production.
+Baking the real prior into training (keeping the data imbalanced) would starve
+the rare classes of signal and the model never learns to detect them. So we
+train balanced on purpose and accept that the model's raw outputs assume a
+uniform prior, which does not match deployment.
+
+**The idea — separate training representation from deployment prior:**
+
+- Train balanced (sampler) so the model learns the *shape* of every class.
+- Apply the real prior at inference, not at training, via logit adjustment:
+  subtract the log of the train-time class frequency, add the log of the true
+  deployment frequency. Same model, corrected to whatever prior actually holds.
+- Tune per-class thresholds on asymmetric misclassification cost — missing a
+  Near-full (a severe defect) costs more than a false alarm, so we optimize
+  expected cost, not raw accuracy.
+  The point: one trained model can serve shifting priors (fab A vs fab B, a new
+  process that spikes Near-full) by changing config instead of retraining.
+
+**Alternative.** Retrain on each deployment's real distribution — accurate to that
+prior, but loses rare-class signal and needs a full retrain per prior shift.
+
+**When.** Defer until baseline + MLflow + Grad-CAM (must-haves) are done. Ties
+into drift detection: when the true prior drifts from the train prior, that *is*
+label drift — detecting it and re-correcting the inference prior closes a clean
+MLOps loop. Evaluation stays on a natural-distribution test set throughout.

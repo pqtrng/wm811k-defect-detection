@@ -13,8 +13,8 @@ environment.
 
 ## Dataset
 
-- **Source:** WM-811K (LSWMD) — 811,457 wafer maps from real-world fabrication, ~172,950 labeled across 9 classes.
-  Published by Prof. Roger Jang, MIR Lab, National Taiwan University.
+- **Source:** WM-811K (LSWMD) — 811,457 wafer maps from real-world fabrication, ~172,950 labeled across 9 classes
+  (8 defect patterns + `none`). Published by Prof. Roger Jang, MIR Lab, National Taiwan University.
 - **Download:** [Kaggle — qingyi/wm811k-wafer-map](https://www.kaggle.com/datasets/qingyi/wm811k-wafer-map) (157 MB zip,
   contains `LSWMD.pkl`)
 - Heavily imbalanced (the `none` class is ~85% of labeled data); wafer-map dimensions vary per wafer.
@@ -36,15 +36,27 @@ unzip ~/Downloads/archive.zip -d data/
 ## Pipeline Stages
 
 1. **EDA** (`01_eda.ipynb`) — class distribution, wafer-map dimensions, per-defect visualization.
-2. **Preprocessing** (`02_preprocessing.ipynb`) — drop `none`, keep 8 defect classes, resize to 64×64 (nearest-neighbor
-   to preserve discrete die values), stratified train/val/test split, written to Parquet.
-3. **Modeling** — baseline CNN → transfer learning (ResNet); imbalance handled at train time via weighted sampling.
-4. **Pipeline packaging** — preprocessing + inference refactored into re-runnable modules under `src/`.
+2. **Preprocessing** (`02_preprocessing.ipynb`) — drop `none` and unlabeled wafers, keep 8 defect classes
+   (25,519 samples), resize to 64×64 (nearest-neighbor to preserve discrete die values {0,1,2}), stratified
+   70/15/15 train/val/test split, written to Parquet.
+3. **Modeling** (`03_train.ipynb`) — baseline CNN → ResNet-18 trained from scratch (no ImageNet pretraining:
+   wafer maps are single-channel discrete-valued images, a different domain from natural images). Class imbalance
+   handled at train time via WeightedRandomSampler; experiments tracked with MLflow (params/metrics/model per run);
+   evaluated with per-class metrics + confusion matrix on a natural-distribution test set, not aggregate accuracy.
+4. **Pipeline packaging** — training + inference refactored into re-runnable modules under `src/`
+   (`dataset.py`, `model.py`, `train.py`).
+
+## Scope
+
+This model performs **classification, not detection**. It assumes the input wafer is already known to be defective
+and answers "which of the 8 defect types?" — it has no `none` class and will force a defect label onto a good wafer.
+This is a deliberate two-stage design decision (see `docs/IDEAS.md`), not a gap: in a full fab pipeline a detection
+stage (defective vs. not) would precede this classifier.
 
 ## Stack
 
-Python 3.12, uv, PyTorch (CUDA), pandas, scikit-learn, PyArrow/Parquet, matplotlib. Developed on WSL2 with GPU
-passthrough (GTX 1660 Super).
+Python 3.12, uv, PyTorch (CUDA), MLflow (experiment tracking), pandas, scikit-learn, PyArrow/Parquet, matplotlib,
+seaborn.
 
 ## Why this matters for streaming/batch infra
 
@@ -71,9 +83,12 @@ uv run python -c "import torch; print(torch.cuda.is_available())"   # expect Tru
 ## Structure
 
 ```
-├── data/         # dataset (git-ignored): LSWMD.pkl, LSWMD_clean.pkl, parquet outputs
-├── notebooks/    # 01_eda.ipynb, 02_preprocessing.ipynb
-├── src/          # pipeline modules
+├── data/         # dataset (git-ignored)
+│   ├── LSWMD.pkl, LSWMD_clean.pkl
+│   └── processed/    # train/val/test parquet outputs
+├── notebooks/    # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
+├── src/          # pipeline modules: dataset.py, model.py, train.py
+├── docs/         # IDEAS.md (deferred extensions, scope rationale)
 ├── models/       # trained checkpoints (git-ignored)
 ├── pyproject.toml
 └── uv.lock
