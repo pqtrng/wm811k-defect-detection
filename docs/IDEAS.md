@@ -84,3 +84,43 @@ prior, but loses rare-class signal and needs a full retrain per prior shift.
 into drift detection: when the true prior drifts from the train prior, that *is*
 label drift — detecting it and re-correcting the inference prior closes a clean
 MLOps loop. Evaluation stays on a natural-distribution test set throughout.
+
+## 4. Advanced augmentation (beyond 90° rotations + flips)
+
+**Context.** The active roadmap already covers *basic* geometric augmentation —
+90°/180°/270° rotations + flips — as the step right after ResNet-18. Those are
+safe for this domain: wafer defects are largely orientation-invariant (a rotated
+Scratch is still a Scratch), rotations/flips about the center preserve the
+edge-vs-center distinction, and 90° rotations only permute pixels so they keep
+the discrete {0, 1, 2} values intact (no interpolation). That basic augmentation
+is **not** captured here because it is in-scope, not deferred. This section is for
+the *harder* augmentation ideas we deliberately postponed.
+
+**The ideas — richer augmentation, each with a catch to design around:**
+
+1. **Learned augmentation policy (RandAugment / AutoAugment / TrivialAugment).**
+   Instead of hand-picking transforms, search for an augmentation policy. Only
+   worth it if manual 90°+flip plateaus — otherwise it adds tuning cost for
+   marginal gain. Most of its default ops (shear, translate, color) are either
+   unsafe (translate breaks edge-vs-center) or meaningless (color on a 1-channel
+   discrete map), so it would need a wafer-safe op subset first.
+2. **Continuous rotation / elastic deformation.** Free-angle rotation and elastic
+   warps create richer variants than 90° steps, but both require interpolation,
+   which produces off-grid values outside {0, 1, 2} — the same reason we use
+   INTER_NEAREST at resize. To do this correctly, split into binary channels
+   (die-present, die-defective), deform each, then re-threshold — mirrors the
+   channel-split approach in Idea #1. Only build if 90°+flip proves insufficient
+   for the ambiguous classes (Loc, Scratch).
+3. **MixUp / CutMix.** Blend two wafers (and their labels) to regularize. Powerful
+   on natural images, but questionable here: a linear blend of two wafer maps is
+   not a physically valid wafer, and a soft label between, say, Scratch and Donut
+   has no fab meaning. Would need validation that blended samples help rather than
+   teach artifacts. Lowest-priority of the three.
+
+**Alternative.** Stick with basic 90°+flip permanently. If it closes the
+Loc/Scratch gap enough, none of the above is needed — augmentation complexity is
+only justified by a measured shortfall, not by default.
+
+**When.** Defer until basic augmentation (90°+flip) has been run and measured on
+ResNet-18. Let the MLflow numbers decide: only reach for advanced augmentation if
+the basic version leaves a clear, quantified gap on the ambiguous classes.
