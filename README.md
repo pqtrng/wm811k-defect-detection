@@ -39,12 +39,39 @@ unzip ~/Downloads/archive.zip -d data/
 2. **Preprocessing** (`02_preprocessing.ipynb`) — drop `none` and unlabeled wafers, keep 8 defect classes
    (25,519 samples), resize to 64×64 (nearest-neighbor to preserve discrete die values {0,1,2}), stratified
    70/15/15 train/val/test split, written to Parquet.
-3. **Modeling** (`03_train.ipynb`) — baseline CNN → ResNet-18 trained from scratch (no ImageNet pretraining:
-   wafer maps are single-channel discrete-valued images, a different domain from natural images). Class imbalance
-   handled at train time via WeightedRandomSampler; experiments tracked with MLflow (params/metrics/model per run);
-   evaluated with per-class metrics + confusion matrix on a natural-distribution test set, not aggregate accuracy.
+3. **Modeling** (`03_train.ipynb`) — baseline CNN → ResNet-18 from scratch → + domain-safe augmentation (no ImageNet
+   pretraining: wafer maps are single-channel discrete-valued images, a different domain from natural images).
+   Checkpoint selection uses val_loss rather than val_macro_f1, because macro-F1 is too noisy epoch-to-epoch on
+   this validation set to be a reliable selection/stopping criterion (verified: val_loss selection gave 0.831 vs
+   0.751 for F1-based on the CNN). Class imbalance handled at train time via WeightedRandomSampler; experiments
+   tracked with MLflow (params/metrics/model per run); evaluated with per-class metrics + confusion matrix on a
+   natural-distribution test set, not aggregate accuracy.
 4. **Pipeline packaging** — training + inference refactored into re-runnable modules under `src/`
    (`dataset.py`, `model.py`, `train.py`).
+
+## Results
+
+Three controlled experiments, each isolating one variable, tracked in MLflow. Results are on the test set
+(3,828 samples); macro-F1 is the primary metric because the classes are imbalanced, with accuracy as secondary.
+
+| Model                          | Variable isolated | Macro-F1 | Accuracy | Test loss |
+|:-------------------------------|:------------------|:---------|:---------|:----------|
+| Baseline CNN (~94K params)     | —                 | 0.831    | 0.867    | 0.356     |
+| ResNet-18 from scratch (11.2M) | capacity          | 0.895    | 0.921    | 0.262     |
+| ResNet-18 + augmentation       | regularization    | 0.923    | 0.943    | 0.167     |
+
+- CNN→ResNet: capacity was the bottleneck for ambiguous classes. Center→Loc misclassifications dropped 109→15.
+  Weakest classes gained most (Loc, Scratch, Center); already-strong classes (Edge-Ring, Near-full) stayed
+  near ceiling — confirming the capacity hypothesis rather than a data/label ceiling.
+- ResNet→augmentation: reduced overfitting — train/val loss gap narrowed ~0.22→0.09. Augmentation is
+  domain-safe by construction: only 90° rotations + flips, which permute pixels (discrete {0,1,2} values
+  preserved, no interpolation) and are center-preserving (edge-vs-center labels stay valid; crops/translations
+  would corrupt them). Loc +0.053, Donut +0.057, Near-full reached F1 1.000.
+- Honest limitation: Scratch barely moved (+0.003), still confused with Loc — a likely genuine
+  morphological ambiguity that geometric augmentation can't resolve.
+
+![Confusion Matrix](docs/confusion_matrix.png)
+![GradCAM](docs/gradcam.png)
 
 ## Scope
 
