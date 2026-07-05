@@ -27,3 +27,6 @@ mlruns/
 
 # OS
 .DS_Store
+
+# Generated figures live in docs/figures
+models/*.png

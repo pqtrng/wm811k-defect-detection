@@ -46,8 +46,8 @@ unzip ~/Downloads/archive.zip -d data/
    0.751 for F1-based on the CNN). Class imbalance handled at train time via WeightedRandomSampler; experiments
    tracked with MLflow (params/metrics/model per run); evaluated with per-class metrics + confusion matrix on a
    natural-distribution test set, not aggregate accuracy.
-4. **Pipeline packaging** — training + inference refactored into re-runnable modules under `src/`
-   (`dataset.py`, `model.py`, `train.py`).
+4. **Pipeline packaging (in progress)** — training + inference are being refactored
+   from the notebooks into re-runnable modules under `src/wm811k/`.
 
 ## Results
 
@@ -70,8 +70,7 @@ Three controlled experiments, each isolating one variable, tracked in MLflow. Re
 - Honest limitation: Scratch barely moved (+0.003), still confused with Loc — a likely genuine
   morphological ambiguity that geometric augmentation can't resolve.
 
-![Confusion Matrix](docs/confusion_matrix.png)
-![GradCAM](docs/gradcam.png)
+![Confusion Matrix](docs/figures/confusion_matrix_resnet18_aug_test.png)
 
 ## Scope
 
@@ -85,12 +84,15 @@ stage (defective vs. not) would precede this classifier.
 Python 3.12, uv, PyTorch (CUDA), MLflow (experiment tracking), pandas, scikit-learn, PyArrow/Parquet, matplotlib,
 seaborn.
 
-## Why this matters for streaming/batch infra
+## Why batch — a deliberate architecture decision
 
-The wafer-map classifier is wrapped in a reproducible ingest → preprocess → infer → store pipeline, with the cleaned
-dataset materialized as a columnar Parquet layer. This mirrors how defect-detection and equipment-health-monitoring
-research integrates into a fab's data backbone (Kafka → Spark → Parquet/Iceberg → serving), with ML inference as one
-stage rather than an isolated experiment.
+Wafer inspection is inherently lot-based: maps arrive in batches per lot, and defect
+classification has no millisecond-latency requirement. This pipeline is therefore
+batch-first by design — reproducible ingest → validate → preprocess → train → evaluate,
+with the cleaned dataset materialized as a columnar Parquet layer — mirroring how
+inspection ML integrates into a fab's data backbone as one stage of a scheduled
+pipeline rather than an isolated experiment. Choosing batch here is an engineering
+decision, not a limitation.
 
 ## Setup
 
@@ -114,7 +116,7 @@ uv run python -c "import torch; print(torch.cuda.is_available())"   # expect Tru
 │   ├── LSWMD.pkl, LSWMD_clean.pkl
 │   └── processed/    # train/val/test parquet outputs
 ├── notebooks/    # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
-├── src/          # pipeline modules: dataset.py, model.py, train.py
+├── src/          # pipeline package (refactor in progress)
 ├── docs/         # IDEAS.md (deferred extensions, scope rationale)
 ├── models/       # trained checkpoints (git-ignored)
 ├── pyproject.toml
