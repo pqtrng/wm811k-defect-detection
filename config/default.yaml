@@ -1,0 +1,11 @@
+seed: 42
+
+labels:
+  - Center
+  - Donut
+  - Edge-Loc
+  - Edge-Ring
+  - Loc
+  - Near-full
+  - Random
+  - Scratch
