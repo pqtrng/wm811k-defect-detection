@@ -9,3 +9,19 @@ labels:
   - Near-full
   - Random
   - Scratch
+
+paths:
+  data_dir: data
+  processed_dir: data/processed
+  models_dir: models
+  figures_dir: docs/figures
+
+training:
+  batch_size: 128
+  lr: 0.001
+  epochs: 30
+  early_stopping_patience: 7
+
+mlflow:
+  tracking_uri: auto
+  experiment_name: wm811k-baseline-cnn
