@@ -1,7 +1,9 @@
 """Data loading and preprocessing for wm811k pipeline."""
 
 from __future__ import annotations
+
 from pathlib import Path
+
 import numpy as np
 import pyarrow.parquet as pq
 import torch
@@ -20,7 +22,7 @@ class WaferDataset(Dataset):
         wafers = np.stack(df["wafer"].values)
         if wafers.ndim != 2 or wafers.shape[1] != 64 * 64:
             raise ValueError(
-                f"Expected 2D array of shape (N, 64, 64), got {wafers.shape}"
+                f"Expected 2D array of shape (N, 4096), got {wafers.shape}"
             )
         self.X = wafers.reshape(-1, 1, 64, 64).astype(np.float32)
 
@@ -63,7 +65,7 @@ class AugmentedWaferDataset(WaferDataset):
 
 
 def build_loaders(
-    config: Config, augment: bool = False, num_workers: int = 0
+        config: Config, augment: bool = False, num_workers: int = 0
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Build train/val/test DataLoaders.
     Train uses a WeightedRandomSampler (inverse class frequency) so `shuffle` is never set on it -- the sampler controls sample order. Val/test see the natural class distribution, unshuffled.
