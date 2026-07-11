@@ -41,34 +41,47 @@ unzip ~/Downloads/archive.zip -d data/
    70/15/15 train/val/test split, written to Parquet.
 3. **Modeling** (`03_train.ipynb`) — baseline CNN → ResNet-18 from scratch → + domain-safe augmentation (no ImageNet
    pretraining: wafer maps are single-channel discrete-valued images, a different domain from natural images).
-   Checkpoint selection uses val_loss rather than val_macro_f1, because macro-F1 is too noisy epoch-to-epoch on
-   this validation set to be a reliable selection/stopping criterion (verified: val_loss selection gave 0.831 vs
-   0.751 for F1-based on the CNN). Class imbalance handled at train time via WeightedRandomSampler; experiments
-   tracked with MLflow (params/metrics/model per run); evaluated with per-class metrics + confusion matrix on a
-   natural-distribution test set, not aggregate accuracy.
-4. **Pipeline packaging (in progress)** — training + inference are being refactored
-   from the notebooks into re-runnable modules under `src/wm811k/`.
+   Checkpoint selection and early stopping use val_loss rather than val_macro_f1: macro-F1 is noisy
+   epoch-to-epoch on this validation set (tiny classes like Near-full, n=22, make it jump in steps), and
+   across three selection strategies val_loss-for-both tested best — 0.835 vs 0.831 (F1 for both) and
+   0.827 (F1 checkpointing, val_loss stopping) — though the gap is modest; val_loss is kept for stability
+   rather than for a large measured win. Class imbalance handled at train time via WeightedRandomSampler;
+   experiments tracked with MLflow (params/metrics/model per run); evaluated with per-class metrics +
+   confusion matrix on a natural-distribution test set, not aggregate accuracy.
+4. **Pipeline packaging** — the notebook pipeline is refactored into an installable package
+   (`src/wm811k/`) with CLI entry points (`python -m wm811k.train`, `python -m wm811k.evaluate`).
+   A full CLI retrain reproduces the notebook result within a ±0.01 parity criterion
+   (test macro-F1 0.915 vs 0.920; GPU nondeterminism accounts for the gap), and every number
+   in the Results table below is reproducible via `wm811k.evaluate` against its checkpoint.
 
 ## Results
 
-Three controlled experiments, each isolating one variable, tracked in MLflow. Results are on the test set
-(3,828 samples); macro-F1 is the primary metric because the classes are imbalanced, with accuracy as secondary.
+A 2×2 grid of controlled experiments (architecture × augmentation), tracked in MLflow. Results are on the
+test set (3,828 samples); macro-F1 is the primary metric because the classes are imbalanced, with accuracy
+as secondary.
 
-| Model                          | Variable isolated | Macro-F1 | Accuracy | Test loss |
-|:-------------------------------|:------------------|:---------|:---------|:----------|
-| Baseline CNN (~94K params)     | —                 | 0.831    | 0.867    | 0.356     |
-| ResNet-18 from scratch (11.2M) | capacity          | 0.895    | 0.921    | 0.262     |
-| ResNet-18 + augmentation       | regularization    | 0.923    | 0.943    | 0.167     |
+| Model                          | Variable isolated            | Macro-F1  | Accuracy | Test loss |
+|:-------------------------------|:-----------------------------|:----------|:---------|:----------|
+| Baseline CNN (~94K params)     | —                            | 0.828     | 0.859    | 0.382     |
+| CNN + augmentation             | regularization (small model) | 0.804     | 0.847    | 0.412     |
+| ResNet-18 from scratch (11.2M) | capacity                     | 0.880     | 0.919    | 0.287     |
+| ResNet-18 + augmentation       | regularization (large model) | **0.920** | 0.942    | 0.167     |
 
-- CNN→ResNet: capacity was the bottleneck for ambiguous classes. Center→Loc misclassifications dropped 109→15.
-  Weakest classes gained most (Loc, Scratch, Center); already-strong classes (Edge-Ring, Near-full) stayed
-  near ceiling — confirming the capacity hypothesis rather than a data/label ceiling.
-- ResNet→augmentation: reduced overfitting — train/val loss gap narrowed ~0.22→0.09. Augmentation is
-  domain-safe by construction: only 90° rotations + flips, which permute pixels (discrete {0,1,2} values
-  preserved, no interpolation) and are center-preserving (edge-vs-center labels stay valid; crops/translations
-  would corrupt them). Loc +0.053, Donut +0.057, Near-full reached F1 1.000.
-- Honest limitation: Scratch barely moved (+0.003), still confused with Loc — a likely genuine
-  morphological ambiguity that geometric augmentation can't resolve.
+- CNN→ResNet (capacity): the catch-all Loc class gained most — recall 0.49→0.84, F1 0.598→0.832;
+  Loc→Center errors fell 123→28 and Loc→Edge-Loc 104→28; Edge-Ring→Edge-Loc confusion dropped 70→25.
+  Already-strong classes (Edge-Ring) stayed near ceiling — capacity, not a data/label ceiling, was the
+  bottleneck.
+- Augmentation × capacity interaction: the same augmentation *hurt* the small CNN (macro-F1 −0.024,
+  test loss 0.382→0.412) but *helped* ResNet (+0.040) — at 94K params the CNN underfits the more varied
+  training distribution, while ResNet has the capacity to exploit it. Augmentation is domain-safe by
+  construction: only 90° rotations + flips, which permute pixels (discrete {0,1,2} values preserved,
+  no interpolation) and are center-preserving (edge-vs-center labels stay valid; crops/translations
+  would corrupt them). On ResNet it lifted exactly the low-sample, high-variety classes:
+  Scratch +0.081 (0.790→0.871), Donut +0.051, Near-full 0.913→0.978.
+- Honest limitation: Loc remains the weakest class (F1 0.857) and still absorbs its neighbors' errors —
+  in the final model 44 Loc wafers are predicted Edge-Loc and 18 Scratch, and augmentation improved Loc
+  precision but not recall (0.844→0.837). A likely genuine morphological ambiguity that geometric
+  augmentation alone can't resolve.
 
 ![Confusion Matrix](docs/figures/confusion_matrix_resnet18_aug_test.png)
 
@@ -109,16 +122,41 @@ GPU check:
 uv run python -c "import torch; print(torch.cuda.is_available())"   # expect True
 ```
 
+## Training & evaluation (CLI)
+
+```bash
+# Train (checkpoint lands in models/, run logged to MLflow)
+uv run python -m wm811k.train --model resnet18 --augment
+uv run python -m wm811k.train --model resnet18 --augment --epochs 2   # cheap smoke test
+
+# Evaluate a checkpoint: per-class report + confusion matrix
+uv run python -m wm811k.evaluate --checkpoint models/resnet18-aug_best.pt \
+    --model resnet18 --split test --title "resnet18-aug (test)"
+
+# Or via Makefile
+make train ARGS='--augment'
+make evaluate CHECKPOINT=models/resnet18-aug_best.pt
+```
+
 ## Structure
 
 ```
+├── configs/      # default.yaml — single source of truth for hyperparameters/paths
 ├── data/         # dataset (git-ignored)
 │   ├── LSWMD.pkl, LSWMD_clean.pkl
 │   └── processed/    # train/val/test parquet outputs
 ├── notebooks/    # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
-├── src/          # pipeline package (refactor in progress)
+├── src/wm811k/   # installable pipeline package
+│   ├── config.py     # YAML-driven Config (frozen dataclasses)
+│   ├── data.py       # WaferDataset, domain-safe augmentation, loaders
+│   ├── models.py     # WaferCNN, WaferResNet18, build_model factory
+│   ├── engine.py     # train/evaluate loops, MLflow logging, checkpointing
+│   ├── train.py      # CLI: python -m wm811k.train
+│   ├── evaluate.py   # CLI: python -m wm811k.evaluate
+│   └── seed.py       # reproducibility
 ├── docs/         # IDEAS.md (deferred extensions, scope rationale)
 ├── models/       # trained checkpoints (git-ignored)
+├── Makefile      # install / notebook / mlflow-server / train / evaluate
 ├── pyproject.toml
 └── uv.lock
 ```
