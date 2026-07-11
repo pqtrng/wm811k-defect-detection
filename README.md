@@ -38,7 +38,11 @@ unzip ~/Downloads/archive.zip -d data/
 1. **EDA** (`01_eda.ipynb`) — class distribution, wafer-map dimensions, per-defect visualization.
 2. **Preprocessing** (`02_preprocessing.ipynb`) — drop `none` and unlabeled wafers, keep 8 defect classes
    (25,519 samples), resize to 64×64 (nearest-neighbor to preserve discrete die values {0,1,2}), stratified
-   70/15/15 train/val/test split, written to Parquet.
+   70/15/15 train/val/test split, written to Parquet. The lossiness of the nearest-neighbor resize is measured rather
+   than assumed: density-normalized defect-die preservation across the resize is mean 0.999 / median 1.000 over all
+   25,519 wafers,
+   no wafer loses its defect signal entirely, and the worst case retains 0.67
+   (`make validate`; `docs/figures/die_preservation.png`).
 3. **Modeling** (`03_train.ipynb`) — baseline CNN → ResNet-18 from scratch → + domain-safe augmentation (no ImageNet
    pretraining: wafer maps are single-channel discrete-valued images, a different domain from natural images).
    Checkpoint selection and early stopping use val_loss rather than val_macro_f1: macro-F1 is noisy
@@ -81,7 +85,10 @@ as secondary.
 - Honest limitation: Loc remains the weakest class (F1 0.857) and still absorbs its neighbors' errors —
   in the final model 44 Loc wafers are predicted Edge-Loc and 18 Scratch, and augmentation improved Loc
   precision but not recall (0.844→0.837). A likely genuine morphological ambiguity that geometric
-  augmentation alone can't resolve.
+  augmentation alone can't resolve. The data path is exonerated as a cause: measured die preservation across the 64×64
+  resize is
+  near-perfect (median 1.000, zero total losses), so the ambiguity lives in the defect morphology
+  itself — though it is telling that the worst-preserved wafers are predominantly Loc and Scratch.
 
 ![Confusion Matrix](docs/figures/confusion_matrix_resnet18_aug_test.png)
 

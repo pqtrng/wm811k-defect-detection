@@ -1,4 +1,4 @@
-.PHONY: help install notebook mlflow-server train evaluate gradcam
+.PHONY: help install notebook mlflow-server train evaluate gradcam validate
 
 UV ?= uv
 MLFLOW_HOST ?= 0.0.0.0
@@ -18,6 +18,7 @@ help:
 	@printf "  make train           Train a model (MODEL=resnet18 ARGS='--augment')\n"
 	@printf "  make evaluate        Evaluate a checkpoint (CHECKPOINT=models/...pt)\n"
 	@printf "  make gradcam         Generate Grad-CAM grids from a checkpoint\n"
+	@printf "  make validate        Run data quality gates + die-preservation report\n"
 
 install:
 	$(UV) sync
@@ -40,3 +41,6 @@ evaluate:
 
 gradcam:
 	$(UV) run python -m wm811k.gradcam --config $(CONFIG) --model $(MODEL) --checkpoint $(CHECKPOINT)
+
+validate:
+	$(UV) run python -m wm811k.validate --config $(CONFIG)
