@@ -124,3 +124,36 @@ only justified by a measured shortfall, not by default.
 **When.** Defer until basic augmentation (90°+flip) has been run and measured on
 ResNet-18. Let the MLflow numbers decide: only reach for advanced augmentation if
 the basic version leaves a clear, quantified gap on the ambiguous classes.
+
+## 5. Browser-side ONNX demo on the portfolio site
+
+**Context.** The portfolio currently *describes* the classifier; a visitor has to
+trust the README numbers. A live demo inverts that: a professor clicks, feeds a
+wafer, sees the prediction. The constraint is skills-honesty over time — any demo
+linked from application documents must still be alive in November 2026 and beyond
+with zero maintenance. A hosted API (Cloud Run) can die from billing, cold starts,
+or CORS; a dead demo is worse than no demo.
+
+**The idea — run the final model in the browser, no server:**
+
+- Export the canonical checkpoint (resnet18-aug, test macro-F1 0.920) to ONNX;
+  the x/2.0 normalization lives inside forward() so it exports with the graph.
+- Quantize to int8 (~11 MB from ~43 MB fp32) and commit the artifact to the
+  portfolio repo; load with onnxruntime-web. 64×64 single-channel inference is
+  effectively instant client-side.
+- Input UI matches the data contract, not "upload an image": preloaded sample
+  wafers per class from the test set, plus a 64×64 draw-your-own-defect grid
+  emitting {0,1,2} values. Invalid input is rejected by the same validation
+  rules as the pipeline — the rejection is part of the demo.
+- Acceptance before claiming: ONNX output must match PyTorch output on a fixed
+  batch (parity check, same discipline as the notebook→CLI refactor).
+
+**Alternative.** Deploy the T10 FastAPI image to Cloud Run and call it from the
+static site — demonstrates the real serving stack (registry, model_version,
+server-side validation) but adds CORS, cold starts, and a billing dependency
+that can silently kill the link. Keep as an interview-only live demo, not as
+the always-on portfolio link.
+
+**When.** Defer until after T10 (serving contract settled) or fold into the
+pending portfolio-number sweep, whichever comes first. Not part of the T6–T12
+sprint; the September 30 deadline takes precedence.
