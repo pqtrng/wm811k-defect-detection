@@ -118,7 +118,7 @@ def fit(
         "num_classes": config.num_classes,
     }
 
-    with mlflow.start_run(run_name=run_name):
+    with mlflow.start_run(run_name=run_name) as run:
         mlflow.log_params(run_params)
         for epoch in range(1, epochs + 1):
             train_loss = train_one_epoch(
@@ -160,6 +160,7 @@ def fit(
                     )
                     break
     print(f"Done! Best val_loss: {best_val_loss:.4f}")
+    print(f"MLflow run id: {run.info.run_id}")
     return best_path
 
 
