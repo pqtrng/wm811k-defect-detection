@@ -85,6 +85,12 @@ as secondary.
 
 ![Confusion Matrix](docs/figures/confusion_matrix_resnet18_aug_test.png)
 
+Grad-CAM on the final model — where the network looks for each class, and what it looked at
+when confusing Loc with its neighbors (regenerate with `make gradcam`):
+
+![Grad-CAM](docs/figures/gradcam.png)
+![Grad-CAM confusions](docs/figures/gradcam_confusions.png)
+
 ## Scope
 
 This model performs **classification, not detection**. It assumes the input wafer is already known to be defective
