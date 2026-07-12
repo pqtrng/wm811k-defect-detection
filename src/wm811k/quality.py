@@ -131,10 +131,6 @@ def die_preservation_report(raw_df: pd.DataFrame, labels: list[str], figures_dir
     axes[0].set_ylabel("wafers")
     axes[0].set_title("Defect-die preservation across resize")
     axes[0].legend()
-    # per_class["mean"].sort_values().plot.barh(ax=axes[1], color="#3b6ea5")
-    # axes[1].axvline(1.0, color="red", ls="--", lw=1)
-    # axes[1].set_xlabel("mean preservation rate")
-    # axes[1].set_title("Per class")
     # Right panel: per-class DISTRIBUTION, not means -- the means are all ~1.0
     # (a bar chart shows eight identical bars); the story is in the tails,
     # where Loc/Scratch outliers dip to ~0.67.

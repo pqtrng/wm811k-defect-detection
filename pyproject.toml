@@ -32,9 +32,18 @@ torchvision = [{ index = "pytorch-cu126" }]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.15.21",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/wm811k"]
 
 [project.scripts]
 wm811k-train = "wm811k.train:main"
 wm811k-evaluate = "wm811k.evaluate:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
