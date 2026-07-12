@@ -157,3 +157,75 @@ the always-on portfolio link.
 **When.** Defer until after T10 (serving contract settled) or fold into the
 pending portfolio-number sweep, whichever comes first. Not part of the T6–T12
 sprint; the September 30 deadline takes precedence.
+
+## 6. LLM-assisted regression summarizer for the promotion gate
+
+**Context.** T9 makes promotion a deliberate manual step: a human reads the
+per-class delta (`registry compare`) before aliasing a version to `@production`,
+because an aggregate macro-F1 win can hide a per-class regression (the whole P1
+thesis). The `compare` CLI already prints the delta table, but reading a table is
+still work — and the *judgment* about whether a given per-class trade-off is
+acceptable ("Loc recall down 2pts but Scratch up 3 — net OK for a fab that cares
+more about Scratch?") is exactly the part a human does slowly.
+
+**The idea — an LLM that *summarizes*, never *decides*:**
+
+- A local open-source model reads the structured `compare` output (macro-F1 delta,
+  per-class precision/recall/F1 delta, confusion-matrix diff) and writes a short
+  natural-language model card: which classes improved, which regressed, and — from
+  the confusion matrix — *where* the new errors go (e.g. "new Loc misses now fall
+  into Edge-Loc, not Center").
+- Output is advisory text attached to the candidate version as an MLflow tag /
+  artifact. The human still runs `promote`. The LLM never calls the registry.
+- Strict honesty boundary: the summarizer is graded like any other component. Its
+  claims must be checkable against the same numbers it was given (no new facts, no
+  scores it can't derive from the delta table). A summary that invents a number is
+  a bug, caught by a test that diffs LLM-cited figures against the source metrics.
+
+**Alternative.** No LLM — keep `compare`'s plain delta table as the only artifact.
+Lower risk, zero new dependency, and the table is already sufficient for a careful
+reviewer. The LLM only earns its place if reading raw deltas becomes a bottleneck
+across many candidate versions.
+
+**Why NOT an auto-promoter.** The tempting adjacent idea — let a model decide the
+promotion — is deliberately rejected. Any automatic gate must collapse the decision
+to a machine-computable criterion, which is the exact aggregate-metric trap P1
+argues against. A summarizer that informs a human is consistent with the thesis; an
+auto-promoter contradicts it. Keeping the human in the loop is the point, not a
+limitation to engineer away.
+
+**When.** Defer until after P1/P2 are stable and submitted. Touches the LLM/
+self-hosted-model interest that is explicitly out of scope for the Fall 2027
+application documents; revisit as a post-submission extension, not during the
+T6–T12 sprint.
+
+## 7. Auto-promotion — explicitly rejected (recorded so it stays rejected)
+
+**Context.** MLflow's registry makes it mechanically trivial to alias a new version
+to `@production` from code the moment training finishes — pick the run with the best
+macro-F1, alias it, done. It is the obvious "automation" to reach for, and it is
+wrong for this project.
+
+**Why it is rejected, not deferred:**
+
+- It re-introduces the single-number decision P1 spends its whole evaluation
+  section dismantling. Promoting on macro-F1 means a version that lifts the
+  aggregate while quietly dropping Loc recall goes live unseen — the precise
+  failure the manual gate exists to catch.
+- It creates an internal contradiction a reviewer would spot immediately: the repo
+  argues "don't trust aggregate metrics, read per-class" at eval time, then trusts
+  an aggregate metric at deploy time. Consistency between the evaluation stance and
+  the MLOps stance is itself a signal of engineering maturity; auto-promote breaks it.
+- Promotion carries accountability (who owns a bad production model), which is why
+  real registries — MLflow, SageMaker, Vertex — separate "register a version" from
+  "promote to production" and expect a human sign-off. Auto-promote is a known
+  anti-pattern, not a shortcut.
+
+****Alternative.** The chosen design: `register` creates a version automatically;
+`promote` is a separate manual command run after a human reads `compare`. This is
+both the industry default and the technical embodiment of the per-class-honesty
+thesis. Idea #6 (LLM summarizer) is the *most* automation this gate should ever
+take on — assistance, never decision.
+
+**When.** Never, as auto-promotion. Recorded here so the decision survives future
+"why don't we just automate this?" pressure with its rationale intact.**
