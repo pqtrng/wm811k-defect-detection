@@ -1,4 +1,4 @@
-.PHONY: help install notebook mlflow-server train evaluate gradcam validate
+.PHONY: help install notebook mlflow-server train evaluate gradcam validate test lint
 
 UV ?= uv
 MLFLOW_HOST ?= 0.0.0.0
@@ -44,3 +44,9 @@ gradcam:
 
 validate:
 	$(UV) run python -m wm811k.validate --config $(CONFIG)
+
+test:
+	uv run pytest
+
+lint:
+	uv run ruff check src tests
