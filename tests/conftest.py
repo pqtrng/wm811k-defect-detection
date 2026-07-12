@@ -71,6 +71,12 @@ def rng() -> np.random.Generator:
 
 
 @pytest.fixture
+def labels() -> list[str]:
+    """Canonical defect labels, returned as a fresh list for each test."""
+    return list(LABELS)
+
+
+@pytest.fixture
 def make_split_df(rng):
     """Factory: build one valid processed-split DataFrame.
     Returns a callable so tests control size/classes and can mutate the result BEFORE writing to Parquet (negative tests corrupt on purpose).
@@ -97,6 +103,8 @@ def write_parquet(tmp_path):
         path = tmp_path / name
         df.to_parquet(path, engine="pyarrow", index=False)
         return path
+
+    return _write
 
 
 @pytest.fixture
