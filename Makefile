@@ -51,4 +51,4 @@ test:
 
 lint:
 	uv run ruff check src tests
-	uv run yamllint .github/
+	uv run yamllint .github/ configs/
