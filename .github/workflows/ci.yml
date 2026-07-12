@@ -40,4 +40,3 @@ jobs:
         run: make test
         env:
           UV_NO_SYNC: "1"
-          UV_NO_SYNC: "1"
