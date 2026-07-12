@@ -1,4 +1,4 @@
-.PHONY: help install notebook mlflow-server train evaluate gradcam validate test lint
+.PHONY: help install notebook mlflow-server train evaluate gradcam validate test lint silver gold verify-gold
 
 UV ?= uv
 MLFLOW_HOST ?= 0.0.0.0
@@ -20,6 +20,9 @@ help:
 	@printf "  make evaluate        Evaluate a checkpoint (CHECKPOINT=models/...pt)\n"
 	@printf "  make gradcam         Generate Grad-CAM grids from a checkpoint\n"
 	@printf "  make validate        Run data quality gates + die-preservation report\n"
+	@printf "  make silver          Build the silver layer from bronze\n"
+	@printf "  make gold            Build the gold layer from silver\n"
+	@printf "  make verify-gold     Rebuild gold from silver and compare (gate)\n"
 
 install:
 	$(UV) sync --extra $(TORCH_EXTRA)
@@ -52,3 +55,12 @@ test:
 lint:
 	uv run ruff check src tests
 	uv run yamllint .github/ configs/
+
+silver:
+	$(UV) run python -m wm811k.pipeline silver --config $(CONFIG)
+
+gold:
+	$(UV) run python -m wm811k.pipeline gold --config $(CONFIG)
+
+verify-gold:
+	$(UV) run python -m wm811k.pipeline verify-gold --config $(CONFIG)

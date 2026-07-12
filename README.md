@@ -27,9 +27,10 @@ The dataset is not tracked in Git. After cloning, download and place it manually
 
 ```bash
 # 1. Download the zip from the Kaggle link above (requires a free Kaggle account)
-# 2. Unzip LSWMD.pkl into data/
-unzip ~/Downloads/archive.zip -d data/
-# Expected: data/LSWMD.pkl  (~214 MB uncompressed)
+# 2. Unzip LSWMD.pkl into the bronze layer
+mkdir -p data/bronze
+unzip ~/Downloads/archive.zip -d data/bronze/
+# Expected: data/bronze/LSWMD.pkl  (~214 MB uncompressed)
 ```
 
 > Note: `LSWMD.pkl` is a legacy Python 2 / old-pandas pickle. The EDA notebook handles it
@@ -45,6 +46,14 @@ unzip ~/Downloads/archive.zip -d data/
    25,519 wafers,
    no wafer loses its defect signal entirely, and the worst case retains 0.67
    (`make validate`; `docs/figures/die_preservation.png`).
+
+   The processed data is organized as a **Medallion architecture** (bronze/silver/gold):
+   immutable raw pickles in `bronze/`, a single cleaned-and-resized table in `silver/`
+   (not yet split), and the stratified train/val/test splits in `gold/`. Splitting is a
+   modeling decision (ratios, seed) kept separate from cleaning, which lets `make verify-gold`
+   deterministically rebuild the gold splits from silver and compare them row-by-row
+   (order-independent SHA-1 fingerprint over wafer bytes + label + lotName + waferIndex)
+   against what is on disk — a mismatch fails the gate rather than silently drifting.
 3. **Modeling** (`03_train.ipynb`) — baseline CNN → ResNet-18 from scratch → + domain-safe augmentation (no ImageNet
    pretraining: wafer maps are single-channel discrete-valued images, a different domain from natural images).
    Checkpoint selection and early stopping use val_loss rather than val_macro_f1: macro-F1 is noisy
@@ -157,13 +166,18 @@ make evaluate CHECKPOINT=models/resnet18-aug_best.pt
 
 ```
 ├── configs/      # default.yaml — single source of truth for hyperparameters/paths
-├── data/         # dataset (git-ignored)
-│   ├── LSWMD.pkl, LSWMD_clean.pkl
-│   └── processed/    # train/val/test parquet outputs
+├── data/         # dataset (git-ignored), Medallion layers
+│   ├── bronze/       # immutable raw: LSWMD.pkl, LSWMD_clean.pkl
+│   ├── silver/       # wafers.parquet: 8-class, resized 64×64, NOT split
+│   └── gold/         # train/val/test parquet — what the models consume
 ├── notebooks/    # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
 ├── src/wm811k/   # installable pipeline package
 │   ├── config.py     # YAML-driven Config (frozen dataclasses)
 │   ├── data.py       # WaferDataset, domain-safe augmentation, loaders
+│   ├── pipeline.py   # Medallion bronze→silver→gold + verify-gold gate
+│   ├── validation.py # Pandera schema gates (silver + gold)
+│   ├── quality.py    # die-preservation metric, resize/flatten_label
+│   ├── validate.py   # CLI data quality gate
 │   ├── models.py     # WaferCNN, WaferResNet18, build_model factory
 │   ├── engine.py     # train/evaluate loops, MLflow logging, checkpointing
 │   ├── train.py      # CLI: python -m wm811k.train
@@ -171,7 +185,7 @@ make evaluate CHECKPOINT=models/resnet18-aug_best.pt
 │   └── seed.py       # reproducibility
 ├── docs/         # IDEAS.md (deferred extensions, scope rationale)
 ├── models/       # trained checkpoints (git-ignored)
-├── Makefile      # install / notebook / mlflow-server / train / evaluate
+├── Makefile      # install / silver / gold / verify-gold / validate / train / evaluate / test / lint
 ├── pyproject.toml
 └── uv.lock
 ```
