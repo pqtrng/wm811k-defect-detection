@@ -9,6 +9,7 @@ CONFIG ?= configs/default.yaml
 MODEL ?= resnet18
 CHECKPOINT ?= models/resnet18-aug_best.pt
 ARGS ?=
+TORCH_EXTRA ?= cu126
 
 help:
 	@printf "Available targets:\n"
@@ -21,7 +22,7 @@ help:
 	@printf "  make validate        Run data quality gates + die-preservation report\n"
 
 install:
-	$(UV) sync
+	$(UV) sync --extra $(TORCH_EXTRA)
 
 notebook:
 	$(UV) run jupyter lab
