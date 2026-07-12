@@ -1,0 +1,6 @@
+---
+extends: default
+
+rules:
+  truthy:
+    check-keys: false  # GitHub Actions' `on:` key is a YAML-1.1 truthy false positive

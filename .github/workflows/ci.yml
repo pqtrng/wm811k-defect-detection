@@ -1,10 +1,11 @@
+---
 name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 # NOTE: CI deliberately does NOT run `make validate`. The Pandera gates
 # validate real data on disk; runners have no data. Data gates belong to
