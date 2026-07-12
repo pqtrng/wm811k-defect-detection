@@ -71,13 +71,13 @@ def build_loaders(
     Train uses a WeightedRandomSampler (inverse class frequency) so `shuffle` is never set on it -- the sampler controls sample order. Val/test see the natural class distribution, unshuffled.
     augment=True swaps the train dataset for AugmentedWaferDataset, val/test are always the plain WaferDataset regardless of this flag.
     """
-    processed_dir = config.paths.processed_dir
+    gold_dir = config.paths.gold_dir
     labels = config.labels
     batch_size = config.training.batch_size
     train_cls = AugmentedWaferDataset if augment else WaferDataset
-    train_ds = train_cls(processed_dir / "train.parquet", labels)
-    val_ds = WaferDataset(processed_dir / "val.parquet", labels)
-    test_ds = WaferDataset(processed_dir / "test.parquet", labels)
+    train_ds = train_cls(gold_dir / "train.parquet", labels)
+    val_ds = WaferDataset(gold_dir / "val.parquet", labels)
+    test_ds = WaferDataset(gold_dir / "test.parquet", labels)
 
     class_counts = np.bincount(train_ds.y, minlength=config.num_classes)
     class_weights = 1.0 / class_counts

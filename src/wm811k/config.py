@@ -4,6 +4,7 @@ Ported from the hardcoded globals in notebooks/03_train.ipynb (SEED, BATCH, LR, 
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -12,10 +13,17 @@ import yaml
 
 @dataclass(frozen=True)
 class PathConfig:
-    """Filesystem paths, resolved to absolute paths relative to project root."""
+    """Filesystem paths, resolved to absolute paths relative to project root.
+    Medallion data layers:
+        - bronze_dir: raw data, immutable (LSWMD.pkl, LSWMD_clean.pkl)
+        - silver_dir: one cleaned table (wafer.parquet), filtered + resized, not split
+        - gold_dir: train/val/test.parquet the models consume
+    """
 
     data_dir: Path
-    processed_dir: Path
+    bronze_dir: Path
+    silver_dir: Path
+    gold_dir: Path
     models_dir: Path
     figures_dir: Path
 
@@ -70,7 +78,9 @@ def load_config(path: str | Path) -> Config:
     paths_raw = raw["paths"]
     paths = PathConfig(
         data_dir=(project_root / paths_raw["data_dir"]).resolve(),
-        processed_dir=(project_root / paths_raw["processed_dir"]).resolve(),
+        bronze_dir=(project_root / paths_raw["bronze_dir"]).resolve(),
+        silver_dir=(project_root / paths_raw["silver_dir"]).resolve(),
+        gold_dir=(project_root / paths_raw["gold_dir"]).resolve(),
         models_dir=(project_root / paths_raw["models_dir"]).resolve(),
         figures_dir=(project_root / paths_raw["figures_dir"]).resolve(),
     )

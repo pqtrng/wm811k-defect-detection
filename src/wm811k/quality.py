@@ -40,8 +40,14 @@ def resize_wafer(wm, size: int = RESIZE) -> np.ndarray:
     return cv2.resize(arr, (size, size), interpolation=cv2.INTER_NEAREST)
 
 
-def _flatten_label(value: object) -> str:
-    """Extract a scalar label from WM-811K's nested label arrays."""
+def flatten_label(value: object) -> str:
+    """Extract a scalar label from WM-811K's nested label arrays.
+    Public because the Medallion pipeline (pipeline.build_silver) reuses the
+    exact same label-flattening as the quality report -- one rule, one source.
+    Note: 02_preprocessing.ipynb used np.asarray(x).flatten() (a copy); this
+    uses .ravel() (a view when possible). Values are identical -- both take the
+    first element of the flattened array -- only the copy-vs-view differs.
+    """
     values = np.asarray(value, dtype=object).ravel()
     return str(values[0]) if values.size else ""
 
@@ -49,9 +55,9 @@ def _flatten_label(value: object) -> str:
 def _normalized_labels(raw_df: pd.DataFrame) -> pd.Series:
     """Return labels from either processed or clean raw WM-811K data."""
     if "label" in raw_df:
-        return raw_df["label"].map(_flatten_label)
+        return raw_df["label"].map(flatten_label)
     if "failureType" in raw_df:
-        return raw_df["failureType"].map(_flatten_label)
+        return raw_df["failureType"].map(flatten_label)
 
     available = ", ".join(map(str, raw_df.columns))
     raise ValueError(

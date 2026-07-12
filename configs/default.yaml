@@ -13,7 +13,9 @@ labels:
 
 paths:
   data_dir: data
-  processed_dir: data/processed
+  bronze_dir: data/bronze
+  silver_dir: data/silver
+  gold_dir: data/gold
   models_dir: models
   figures_dir: docs/figures
 
