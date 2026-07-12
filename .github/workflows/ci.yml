@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# NOTE: CI deliberately does NOT run `make validate`. The Pandera gates
+# validate real data on disk; runners have no data. Data gates belong to
+# machines that hold the data.
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies (CPU torch -- runners have no GPU)
+        run: uv sync --extra cpu
+
+      - name: Lint
+        run: make lint
+        env:
+          # `uv run` inside make must NOT re-sync the env to default extras,
+          # which would swap the CPU torch back out.
+          UV_NO_SYNC: "1"
+
+      - name: Test
+        run: make test
+        env:
+          UV_NO_SYNC: "1"
+          UV_NO_SYNC: "1"

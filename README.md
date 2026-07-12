@@ -1,3 +1,5 @@
+[![CI](https://github.com/pqtrng/wm811k-defect-detection/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pqtrng/wm811k-defect-detection/actions/workflows/ci.yml)
+
 # WM-811K Wafer Defect Detection Pipeline
 
 End-to-end pipeline for classifying wafer map defect patterns from the WM-811K dataset, built with a
