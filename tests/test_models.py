@@ -50,7 +50,7 @@ def test_five_step_overfit_smoke(name, tiny_config):
     device = torch.device("cpu")
 
     ds = WaferDataset(
-        tiny_config.paths.processed_dir / "train.parquet", tiny_config.labels
+        tiny_config.paths.gold_dir / "train.parquet", tiny_config.labels
     )
     # One batch = whole tiny set (32 samples) -> train_one_epoch == one step
     loader = DataLoader(ds, batch_size=len(ds), shuffle=False)

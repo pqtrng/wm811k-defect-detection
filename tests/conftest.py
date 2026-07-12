@@ -110,13 +110,17 @@ def write_parquet(tmp_path):
 @pytest.fixture
 def tiny_config(tmp_path, make_split_df) -> Config:
     """A complete frozen Config over a tiny on-disk processed dir.
-    Writes train/val/test Parquets (8 classes x 4 samples each) into tmp_path/processed and points all paths at tmp_path, so build_loaders and the engine can run end-to-end without the repo's configs/ or data/
+    Writes train/val/test Parquets (8 classes x 4 samples each) into tmp_path/gold
+    and points all paths at tmp_path, so build_loaders and the engine can run
+    end-to-end without the repo's configs/ or data/. bronze/silver dirs are
+    declared (pointing under tmp_path) but not populated -- no test in this
+    suite consumes them; pipeline tests build their own fixtures.
     """
-    processed = tmp_path / "processed"
-    processed.mkdir()
+    gold = tmp_path / "gold"
+    gold.mkdir()
     for split in ("train", "val", "test"):
         make_split_df(n_per_class=4).to_parquet(
-            processed / f"{split}.parquet", engine="pyarrow", index=False
+            gold / f"{split}.parquet", engine="pyarrow", index=False
         )
 
     return Config(
@@ -124,7 +128,9 @@ def tiny_config(tmp_path, make_split_df) -> Config:
         labels=list(LABELS),
         paths=PathConfig(
             data_dir=tmp_path / "data",
-            processed_dir=processed,
+            bronze_dir=tmp_path / "bronze",
+            silver_dir=tmp_path / "silver",
+            gold_dir=gold,
             models_dir=tmp_path / "models",
             figures_dir=tmp_path / "figures",
         ),

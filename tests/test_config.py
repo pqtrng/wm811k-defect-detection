@@ -17,7 +17,9 @@ def _write_yaml(tmp_path, tracking_uri="auto"):
         "labels": ["A", "B"],
         "paths": {
             "data_dir": "data",
-            "processed_dir": "data/processed",
+            "bronze_dir": "data/bronze",
+            "silver_dir": "data/silver",
+            "gold_dir": "data/gold",
             "models_dir": "models",
             "figures_dir": "docs/figures",
         },
@@ -37,7 +39,7 @@ def _write_yaml(tmp_path, tracking_uri="auto"):
 def test_paths_resolve_against_project_root(tmp_path):
     config = load_config(_write_yaml(tmp_path))
     # project_root = configs/.. = tmp_path
-    assert config.paths.processed_dir == (tmp_path / "data/processed").resolve()
+    assert config.paths.gold_dir == (tmp_path / "data/gold").resolve()
     assert config.seed == 7
     assert config.num_classes == 2
     assert config.label2idx == {"A": 0, "B": 1}

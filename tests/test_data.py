@@ -11,7 +11,7 @@ from wm811k.seed import set_seed
 
 def test_dataset_return_raw_unnormalized(tiny_config):
     ds = WaferDataset(
-        tiny_config.paths.processed_dir / "train.parquet", tiny_config.labels
+        tiny_config.paths.gold_dir / "train.parquet", tiny_config.labels
     )
     x, y = ds[0]
     assert x.shape == (1, 64, 64)
@@ -34,7 +34,7 @@ def test_augmentation_is_pure_permutation(tiny_config):
     """rot90/flip PERMUTE pixels, never interpolate: per-value pixel counts
     (bincount over {0,1,2}) must be identical before and after. This is the
     mathematical form of the 'domain-safe augmentation' claim in the README."""
-    path = tiny_config.paths.processed_dir / "train.parquet"
+    path = tiny_config.paths.gold_dir / "train.parquet"
     plain = WaferDataset(path, tiny_config.labels)
     augmented = AugmentedWaferDataset(path, tiny_config.labels)
 
