@@ -18,6 +18,7 @@ paths:
   gold_dir: data/gold
   models_dir: models
   figures_dir: docs/figures
+  mlruns_dir: mlruns
 
 training:
   batch_size: 128
@@ -27,4 +28,4 @@ training:
 
 mlflow:
   tracking_uri: auto
-  experiment_name: wm811k-baseline-cnn
+  experiment_name: wm811k-defect

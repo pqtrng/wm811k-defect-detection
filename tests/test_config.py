@@ -22,9 +22,12 @@ def _write_yaml(tmp_path, tracking_uri="auto"):
             "gold_dir": "data/gold",
             "models_dir": "models",
             "figures_dir": "docs/figures",
+            "mlruns_dir": "mlruns",
         },
         "training": {
-            "batch_size": 4, "lr": 0.01, "epochs": 1,
+            "batch_size": 4,
+            "lr": 0.01,
+            "epochs": 1,
             "early_stopping_patience": 1,
         },
         "mlflow": {"tracking_uri": tracking_uri, "experiment_name": "t"},

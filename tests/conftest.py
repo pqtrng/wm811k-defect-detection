@@ -15,12 +15,22 @@ Design principles:
 - Each class gets a geometrically distinct defect pattern so a model can
   memorize the tiny set -- required by the 5-step overfit smoke test.
 """
+
 import numpy as np
 import pandas as pd
 import pytest
 from wm811k.config import TrainingConfig, MLFlowConfig, Config, PathConfig
 
-LABELS = ["Center", "Donut", "Edge-Loc", "Edge-Ring", "Loc", "Near-full", "Random", "Scratch"]
+LABELS = [
+    "Center",
+    "Donut",
+    "Edge-Loc",
+    "Edge-Ring",
+    "Loc",
+    "Near-full",
+    "Random",
+    "Scratch",
+]
 SIDE = 64
 
 
@@ -85,8 +95,9 @@ def make_split_df(rng):
     def _make(n_per_class: int = 4, labels: list[str] | None = None) -> pd.DataFrame:
         labels = LABELS if labels is None else labels
         rows = [
-            {"wafer": make_wafer(label, rng).reshape(-1), "label": label} for label in labels for _ in
-            range(n_per_class)
+            {"wafer": make_wafer(label, rng).reshape(-1), "label": label}
+            for label in labels
+            for _ in range(n_per_class)
         ]
         return pd.DataFrame(rows)
 
@@ -133,6 +144,7 @@ def tiny_config(tmp_path, make_split_df) -> Config:
             gold_dir=gold,
             models_dir=tmp_path / "models",
             figures_dir=tmp_path / "figures",
+            mlruns_dir=tmp_path / "mlruns",
         ),
         training=TrainingConfig(
             batch_size=8, lr=1e-3, epochs=1, early_stopping_patience=2
@@ -140,5 +152,5 @@ def tiny_config(tmp_path, make_split_df) -> Config:
         mlflow=MLFlowConfig(
             tracking_uri=f"sqlite:///{tmp_path / 'mlflow.db'}",
             experiment_name="wm811k-tests",
-        )
+        ),
     )

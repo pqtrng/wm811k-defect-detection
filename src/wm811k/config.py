@@ -26,6 +26,7 @@ class PathConfig:
     gold_dir: Path
     models_dir: Path
     figures_dir: Path
+    mlruns_dir: Path
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,7 @@ def load_config(path: str | Path) -> Config:
         gold_dir=(project_root / paths_raw["gold_dir"]).resolve(),
         models_dir=(project_root / paths_raw["models_dir"]).resolve(),
         figures_dir=(project_root / paths_raw["figures_dir"]).resolve(),
+        mlruns_dir=(project_root / paths_raw["mlruns_dir"]).resolve(),
     )
 
     training = TrainingConfig(
