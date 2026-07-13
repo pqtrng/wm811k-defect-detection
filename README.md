@@ -118,7 +118,7 @@ stage (defective vs. not) would precede this classifier.
 
 ## Stack
 
-Python 3.12, uv, PyTorch (CUDA), MLflow (experiment tracking), pandas, scikit-learn, PyArrow/Parquet, matplotlib,
+Python 3.12, uv, PyTorch (CUDA), MLflow (experiment tracking + model registry), pandas, scikit-learn, PyArrow/Parquet, matplotlib,
 seaborn.
 
 ## Why batch — a deliberate architecture decision
@@ -152,6 +152,7 @@ uv run python -c "import torch; print(torch.cuda.is_available())"   # expect Tru
 # Train (checkpoint lands in models/, run logged to MLflow)
 uv run python -m wm811k.train --model resnet18 --augment
 uv run python -m wm811k.train --model resnet18 --augment --epochs 2   # cheap smoke test
+uv run python -m wm811k.train --model resnet18 --augment --register   # train + register a version
 
 # Evaluate a checkpoint: per-class report + confusion matrix
 uv run python -m wm811k.evaluate --checkpoint models/resnet18-aug_best.pt \
@@ -161,6 +162,28 @@ uv run python -m wm811k.evaluate --checkpoint models/resnet18-aug_best.pt \
 make train ARGS='--augment'
 make evaluate CHECKPOINT=models/resnet18-aug_best.pt
 ```
+
+## Model Registry
+
+Trained models are versioned in an MLflow Model Registry entry named `wm811k-defect-classifier`.
+Registration and promotion are **two separate steps on purpose**:
+
+```bash
+# 1. Train and register a new version (does NOT promote)
+uv run python -m wm811k.train --model resnet18 --augment --register
+
+# 2. Review per-class F1 deltas against the current production model
+uv run python -m wm811k.registry compare --candidate <version>
+
+# 3. Promote — the manual gate — only after reviewing the deltas
+uv run python -m wm811k.registry promote --version <version>
+```
+
+`register` creates a version but never aliases it to `@production`. Promotion is a deliberate
+manual command because an aggregate macro-F1 gain can mask a per-class regression — `compare`
+surfaces exactly that (per-class F1 delta, with regressions flagged) so a human decides before
+a model goes live. Serving (T10) loads whatever version currently holds the `@production` alias.
+The rationale, and why automatic promotion is rejected, is recorded in `docs/IDEAS.md` (#6/#7).
 
 ## Structure
 
@@ -180,6 +203,7 @@ make evaluate CHECKPOINT=models/resnet18-aug_best.pt
 │   ├── validate.py   # CLI data quality gate
 │   ├── models.py     # WaferCNN, WaferResNet18, build_model factory
 │   ├── engine.py     # train/evaluate loops, MLflow logging, checkpointing
+│   ├── registry.py   # MLflow registry: register / promote / compare / load_production
 │   ├── train.py      # CLI: python -m wm811k.train
 │   ├── evaluate.py   # CLI: python -m wm811k.evaluate
 │   └── seed.py       # reproducibility
