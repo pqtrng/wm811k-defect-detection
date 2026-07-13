@@ -26,10 +26,30 @@ from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from torch.utils.data import DataLoader
 
 from wm811k.config import Config
+from wm811k.registry import register_checkpoint
 
 
 def _default_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def _ensure_experiment(config: Config) -> None:
+    """Set tracking URI + experiment, pinning artifact_location to <root>/mlruns.
+
+    MLflow freezes an experiment's artifact_location at CREATION time, inferring
+    it from the current working directory unless told otherwise. Running the first
+    command from notebooks/ once permanently pins artifacts to notebooks/mlruns/.
+    We pin it explicitly to config.paths.mlruns_dir so artifact location is a
+    declared constant, independent of cwd -- required for reproducibility and for
+    remote roots.
+    """
+    mlflow.set_tracking_uri(config.mlflow.tracking_uri)
+    name = config.mlflow.experiment_name
+    if mlflow.get_experiment_by_name(name) is None:
+        config.paths.mlruns_dir.mkdir(parents=True, exist_ok=True)
+        artifact_location = (config.paths.mlruns_dir / name).as_uri()
+        mlflow.create_experiment(name, artifact_location=artifact_location)
+    mlflow.set_experiment(name)
 
 
 def train_one_epoch(model, loader, criterion, optimizer, device):
@@ -72,15 +92,20 @@ def evaluate(model, loader, criterion, device):
 
 
 def fit(
-        model: nn.Module,
-        run_name: str,
-        train_loader: DataLoader,
-        val_loader: DataLoader,
-        config: Config,
-        device: torch.device | None = None,
-) -> Path:
+    model: nn.Module,
+    run_name: str,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    config: Config,
+    device: torch.device | None = None,
+) -> tuple[Path, str]:
     """Train with MLflow logging, LR scheduling, and early stopping.
-    Returns the path to the best checkpoint selected by val_loss.
+
+    Returns (best_checkpoint_path, mlflow_run_id). The run_id is returned so the
+    caller can resume the SAME run for test-metric logging, model logging, and
+    registration -- keeping a model and all its metrics co-located in one run
+    (required for `registry compare`, and the basis for preemption-resume in T11).
+    Checkpoint selection uses best val_loss, never val_macro_f1.
 
     Ported from the notebook's run_experiment; hyperparameters now come from
     config instead of module globals.
@@ -90,8 +115,7 @@ def fit(
     lr = config.training.lr
     es_patience = config.training.early_stopping_patience
 
-    mlflow.set_tracking_uri(config.mlflow.tracking_uri)
-    mlflow.set_experiment(config.mlflow.experiment_name)
+    _ensure_experiment(config)
 
     model = model.to(device)
     criterion = nn.CrossEntropyLoss()
@@ -122,20 +146,32 @@ def fit(
         mlflow.log_params(run_params)
         for epoch in range(1, epochs + 1):
             train_loss = train_one_epoch(
-                model=model, loader=train_loader, criterion=criterion,
-                optimizer=optimizer, device=device,
+                model=model,
+                loader=train_loader,
+                criterion=criterion,
+                optimizer=optimizer,
+                device=device,
             )
             val_loss, val_preds, val_labels = evaluate(
-                model=model, loader=val_loader, criterion=criterion, device=device,
+                model=model,
+                loader=val_loader,
+                criterion=criterion,
+                device=device,
             )
-            val_macro_f1 = f1_score(y_true=val_labels, y_pred=val_preds, average="macro")
+            val_macro_f1 = f1_score(
+                y_true=val_labels, y_pred=val_preds, average="macro"
+            )
 
             scheduler.step(metrics=val_loss)
             current_lr = optimizer.param_groups[0]["lr"]
 
             mlflow.log_metrics(
-                {"train_loss": train_loss, "val_loss": val_loss,
-                 "val_macro_f1": val_macro_f1, "lr": current_lr},
+                {
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "val_macro_f1": val_macro_f1,
+                    "lr": current_lr,
+                },
                 step=epoch,
             )
 
@@ -161,23 +197,29 @@ def fit(
                     break
     print(f"Done! Best val_loss: {best_val_loss:.4f}")
     print(f"MLflow run id: {run.info.run_id}")
-    return best_path
+    return best_path, run.info.run_id
 
 
 def evaluate_and_report(
-        best_path: str | Path,
-        model: nn.Module,
-        loader: DataLoader,
-        title: str,
-        config: Config,
-        device: torch.device | None = None,
+    best_path: str | Path,
+    model: nn.Module,
+    loader: DataLoader,
+    title: str,
+    config: Config,
+    device: torch.device | None = None,
+    run_id: str | None = None,
 ) -> Path:
     """Load best checkpoint, run per-class report + confusion matrix on loader.
 
     Never reports aggregate accuracy alone: per-class precision/recall/F1 and
     the confusion matrix are the point (class imbalance hides regressions).
-    Logs test metrics to MLflow and saves the confusion matrix under
-    config.paths.figures_dir.
+
+    Logs test_loss, test_macro_f1, and per-class test_f1_<label> to MLflow, plus
+    the confusion matrix under config.paths.figures_dir. If run_id is given, logs
+    into THAT run (co-locating test metrics with the model that fit() trained);
+    otherwise opens a standalone '<title>-eval' run (backward-compatible path for
+    the evaluate.py CLI). The per-class test_f1_<label> metrics are what
+    `registry compare` reads to surface per-class regressions before promotion.
     """
     device = device or _default_device()
     criterion = nn.CrossEntropyLoss()
@@ -188,19 +230,38 @@ def evaluate_and_report(
         model=model, loader=loader, criterion=criterion, device=device
     )
     test_macro_f1 = f1_score(y_true=test_labels, y_pred=test_preds, average="macro")
+    # Per-class F1 for MLflow (registry compare reads test_f1_<label> back).
+    # Keep label names verbatim so compare can round-trip the prefix strip.
+    report_dict = classification_report(
+        y_true=test_labels,
+        y_pred=test_preds,
+        target_names=config.labels,
+        digits=3,
+        output_dict=True,
+    )
+    per_class_f1 = {
+        f"test_f1_{label}": report_dict[label]["f1-score"] for label in config.labels
+    }
+
     print(f"Test loss for {title}: {test_loss:.4f}")
     print(
         classification_report(
-            y_true=test_labels, y_pred=test_preds,
-            target_names=config.labels, digits=3,
+            y_true=test_labels,
+            y_pred=test_preds,
+            target_names=config.labels,
+            digits=3,
         )
     )
 
     cm = confusion_matrix(y_true=test_labels, y_pred=test_preds)
     plt.figure(figsize=(9, 7))
     sns.heatmap(
-        cm, annot=True, fmt="d", cmap="Blues",
-        xticklabels=config.labels, yticklabels=config.labels,
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=config.labels,
+        yticklabels=config.labels,
     )
     plt.xlabel("Predicted")
     plt.ylabel("True")
@@ -215,10 +276,66 @@ def evaluate_and_report(
     plt.savefig(cm_path, dpi=120, bbox_inches="tight")
     plt.close()
 
-    mlflow.set_tracking_uri(config.mlflow.tracking_uri)
-    mlflow.set_experiment(config.mlflow.experiment_name)
-    with mlflow.start_run(run_name=f"{title}-eval"):
-        mlflow.log_metrics({"test_loss": test_loss, "test_macro_f1": test_macro_f1})
-        mlflow.log_artifact(str(cm_path))
+    _ensure_experiment(config)
+
+    metrics = {"test_loss": test_loss, "test_macro_f1": test_macro_f1, **per_class_f1}
+    if run_id is not None:
+        # Resume the fit() run: test metrics live with the model they describe.
+        with mlflow.start_run(run_id=run_id):
+            mlflow.log_metrics(metrics)
+            mlflow.log_artifact(str(cm_path))
+    else:
+        with mlflow.start_run(run_name=f"{title}-eval"):
+            mlflow.log_metrics(metrics)
+            mlflow.log_artifact(str(cm_path))
 
     return cm_path
+
+
+def log_and_register(
+    run_id: str,
+    model: nn.Module,
+    best_path: str | Path,
+    config: Config,
+    register: bool = False,
+    device: torch.device | None = None,
+) -> str | None:
+    """Log the BEST model into the fit() run, optionally register a new version.
+
+    Resumes run_id (the run fit() owns) so the model artifact lives with the
+    metrics that describe it. Reloads the best checkpoint into `model` BEFORE
+    logging -- after training, `model` holds last-epoch weights, which may be
+    worse than the val_loss-selected best; logging the raw object would ship the
+    wrong weights.
+
+    log_model uses a batch=2 float32 input_example (2,1,64,64): MLflow 3.x runs
+    torch.export, which raises a dynamic-shape ConstraintViolationError on a
+    batch=1 example. Inference at any batch size still works.
+
+    If register=True, creates a NEW registry version from this run's model. It is
+    NEVER aliased to @production here -- promotion is a separate manual step
+    (`registry promote`) taken after a human reviews `registry compare`.
+
+    Returns the new version string if registered, else None.
+    """
+    device = device or _default_device()
+    model = model.to(device)
+    model.load_state_dict(torch.load(best_path, map_location=device))
+    model.eval()
+
+    input_example = torch.zeros(2, 1, 64, 64, dtype=torch.float32).numpy()
+
+    _ensure_experiment(config)
+
+    with mlflow.start_run(run_id=run_id):
+        model_info = mlflow.pytorch.log_model(
+            model, name="model", input_example=input_example
+        )
+        model_uri = model_info.model_uri
+
+    if not register:
+        print(f"Logged model to run {run_id} (not registered).")
+        return None
+
+    version = register_checkpoint(model_uri, config.mlflow.tracking_uri)
+    return version
