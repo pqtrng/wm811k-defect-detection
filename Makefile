@@ -9,7 +9,16 @@ CONFIG ?= configs/default.yaml
 MODEL ?= resnet18
 CHECKPOINT ?= models/resnet18-aug_best.pt
 ARGS ?=
-TORCH_EXTRA ?= cu126
+
+# Pick the right PyTorch build for THIS machine automatically:
+#   - NVIDIA GPU present (nvidia-smi on PATH) -> CUDA wheels  (cu126)
+#   - otherwise (e.g. macOS / no GPU)         -> CPU wheels   (cpu)
+# Override anytime, e.g.:  make test TORCH_EXTRA=cpu
+TORCH_EXTRA ?= $(shell command -v nvidia-smi >/dev/null 2>&1 && echo cu126 || echo cpu)
+
+# Every `uv run` goes through RUN so it requests the same extra. This keeps
+# torch installed and stops uv from uninstalling/reinstalling it between targets.
+RUN := $(UV) run --extra $(TORCH_EXTRA)
 
 help:
 	@printf "Available targets:\n"
@@ -23,44 +32,47 @@ help:
 	@printf "  make silver          Build the silver layer from bronze\n"
 	@printf "  make gold            Build the gold layer from silver\n"
 	@printf "  make verify-gold     Rebuild gold from silver and compare (gate)\n"
+	@printf "\n"
+	@printf "PyTorch build auto-detected for this machine: TORCH_EXTRA=$(TORCH_EXTRA)\n"
+	@printf "  Override with e.g.: make install TORCH_EXTRA=cpu\n"
 
 install:
 	$(UV) sync --extra $(TORCH_EXTRA)
 
 notebook:
-	$(UV) run jupyter lab
+	$(RUN) jupyter lab
 
 mlflow-server:
-	$(UV) run mlflow server \
+	$(RUN) mlflow server \
 		--backend-store-uri "$(MLFLOW_BACKEND_STORE_URI)" \
 		--default-artifact-root "$(MLFLOW_ARTIFACT_ROOT)" \
 		--host "$(MLFLOW_HOST)" \
 		--port "$(MLFLOW_PORT)"
 
 train:
-	$(UV) run python -m wm811k.train --config $(CONFIG) --model $(MODEL) $(ARGS)
+	$(RUN) python -m wm811k.train --config $(CONFIG) --model $(MODEL) $(ARGS)
 
 evaluate:
-	$(UV) run python -m wm811k.evaluate --config $(CONFIG) --model $(MODEL) --checkpoint $(CHECKPOINT) $(ARGS)
+	$(RUN) python -m wm811k.evaluate --config $(CONFIG) --model $(MODEL) --checkpoint $(CHECKPOINT) $(ARGS)
 
 gradcam:
-	$(UV) run python -m wm811k.gradcam --config $(CONFIG) --model $(MODEL) --checkpoint $(CHECKPOINT)
+	$(RUN) python -m wm811k.gradcam --config $(CONFIG) --model $(MODEL) --checkpoint $(CHECKPOINT)
 
 validate:
-	$(UV) run python -m wm811k.validate --config $(CONFIG)
+	$(RUN) python -m wm811k.validate --config $(CONFIG)
 
 test:
-	uv run pytest
+	$(RUN) pytest
 
 lint:
-	uv run ruff check src tests
-	uv run yamllint .github/ configs/
+	$(RUN) ruff check src tests
+	$(RUN) yamllint .github/ configs/
 
 silver:
-	$(UV) run python -m wm811k.pipeline silver --config $(CONFIG)
+	$(RUN) python -m wm811k.pipeline silver --config $(CONFIG)
 
 gold:
-	$(UV) run python -m wm811k.pipeline gold --config $(CONFIG)
+	$(RUN) python -m wm811k.pipeline gold --config $(CONFIG)
 
 verify-gold:
-	$(UV) run python -m wm811k.pipeline verify-gold --config $(CONFIG)
+	$(RUN) python -m wm811k.pipeline verify-gold --config $(CONFIG)
