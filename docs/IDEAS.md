@@ -229,3 +229,49 @@ take on — assistance, never decision.
 
 **When.** Never, as auto-promotion. Recorded here so the decision survives future
 "why don't we just automate this?" pressure with its rationale intact.**
+
+## 8. CI/CD promotion gate — human-in-the-loop, in the pipeline (needs remote store)
+
+**Context.** Ideas #6 and #7 settle *what* the promotion gate is: a human reads
+`registry compare` and runs `promote` by hand, because an aggregate macro-F1 win
+can hide a per-class regression (the P1 thesis), and no machine-computable
+criterion may replace that judgment (#7). What they leave open is *where* the
+human acts. Today it is a local terminal on WSL — the same host that owns the
+registry (`mlflow.db` + `mlruns/`, git-ignored, absolute paths, single-host by the
+Cách-1 decision). Fine for one operator, but the decision is invisible: no shared
+record of who read which `compare` output before a version went to `@production`,
+and no link from that decision to the artifact that ships. This idea moves the
+*same* judgment into a pipeline where it is logged and reviewable — and is
+explicitly not the auto-promoter #7 rejects: there is no machine criterion here,
+the pipeline cannot proceed without a mandatory human approval, and a CI job that
+renders a table then waits for a person is strictly less automation than the LLM
+summary #6 already permits. Only the location of the judgment moves, never the
+judgment itself.
+
+**The idea — the #6/#7 gate expressed as a CI job:**
+
+- On a candidate version, a CI job runs `registry compare` and renders the
+  per-class delta table (macro-F1 delta, per-class precision/recall/F1, and the
+  confusion-matrix diff from #6) into the run's step summary — the reviewer reads
+  the *same* numbers they would read locally, now on a durable CI record.
+- The job blocks on a **GitHub Environment (`production`) with a required
+  reviewer**. Nothing proceeds until a named human approves; GitHub records who
+  approved and when. The approval *is* the promotion decision.
+- Only on approval does a downstream step set the `@production` alias and publish
+  the checkpoint (and, per #5, the ONNX export) to a GitHub Release — promotion and
+  distribution become one auditable event instead of two manual steps that drift.
+
+**Alternative.** Keep promotion a local manual command (the current T9 design).
+Zero new infrastructure, and for a single operator it already embodies the thesis.
+The CI gate earns its place only once the registry is remote and shared — multiple
+machines, or a reviewer who is not the person who trained the model — and only if
+the required-reviewer instruction states that approval means *the per-class deltas
+were read and the trade-off accepted*, not *the build passed*. If approval decays
+into clicking through a green build, the gate has failed in spirit while passing
+mechanically, and the local manual command was strictly better.
+
+**When.** Defer to T11 and strictly after it: impossible while the registry is
+local to WSL, because a GitHub-hosted runner cannot see `mlflow.db` or `mlruns/`.
+Requires the remote tracking store (Postgres + object-store artifacts) that T11
+introduces. Not part of the T6–T12 serving work; the September 30 deadline for
+P1/P2 living on GitHub takes precedence over pipeline polish.
