@@ -12,7 +12,7 @@ import pytest
 from wm811k.validation import (
     EXPECTED_TOTAL,
     validate_split,
-    validate_cross_split
+    validate_cross_split, check_wafer_grid
 )
 
 
@@ -109,3 +109,39 @@ def test_cross_split_detects_missing_class(labels):
     }
     errors = validate_cross_split(splits, labels)
     assert any("val" in e and "Scratch" in e for e in errors)
+
+
+# --- check_wafer_grid: the single-grid serving gate (T10) --------------------
+# Same {0,1,2} + shape contract as the Parquet gates above, but for one wafer
+# arriving at the API. Every rejection path gets a negative test; a gate never
+# seen failing is a gate never proven.
+def test_check_wafer_grid_accepts_flat_4096():
+    flat = ([0, 1, 2] * 1365) + [0]  # length 4096
+    out = check_wafer_grid(flat)
+    assert out.shape == (64, 64)
+
+
+def test_check_wafer_grid_accepts_square_64():
+    out = check_wafer_grid(np.zeros((64, 64), dtype=int))
+    assert out.shape == (64, 64)
+
+
+def test_check_wafer_grid_returns_float32():
+    out = check_wafer_grid(np.ones((64, 64), dtype=int))
+    assert out.dtype == np.float32
+
+
+def test_check_wafer_grid_keeps_raw_values():
+    # The model divides by 2.0 inside forward(); the gate must NOT pre-normalize.
+    out = check_wafer_grid(np.full((64, 64), 2, dtype=int))
+    assert out.max() == 2.0
+
+
+def test_check_wafer_grid_rejects_bad_value():
+    with pytest.raises(ValueError, match="die value"):
+        check_wafer_grid(np.full((64, 64), 3, dtype=int))
+
+
+def test_check_wafer_grid_rejects_bad_shape():
+    with pytest.raises(ValueError, match="shape"):
+        check_wafer_grid(np.zeros((10, 10), dtype=int))

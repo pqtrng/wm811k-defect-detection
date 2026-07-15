@@ -79,3 +79,56 @@ def validate_cross_split(splits: dict[str, pd.DataFrame], labels: list[str]) -> 
             errors.append(f"split '{name}' is missing class(es): {sorted(missing)}")
 
     return errors
+
+
+# --- Single-grid gate: reused by the serving layer (T10) ---------------------
+# The Parquet gates above validate a whole split on disk. The API validates one
+# request at a time, but the RULE must be identical -- one rule set, two doors --
+# so a wafer the model was trained on and a wafer the API accepts can never
+# diverge. check_wafer_grid is that shared door for a single sample.
+
+WAFER_SIDE = 64  # 64 x 64; WAFER_FLAT_SHAPE == (WAFER_SIDE * WAFER_SIDE,)
+
+
+def check_wafer_grid(grid: object) -> np.ndarray:
+    """Validate ONE wafer map coming from an API request; return it as float32.
+
+    Accepts either a flat sequence of 4096 values or a 64x64 nested sequence.
+    Applies the SAME shape + die-value contract as the Parquet split schema
+    (WAFER_FLAT_SHAPE, ALLOWED_DIE_VALUES), so serving cannot accept a wafer the
+    training pipeline would have rejected.
+
+    Args:
+        grid: a wafer map -- flat length-4096 or nested 64x64 -- of ints in
+            {0, 1, 2} (0 = off-wafer, 1 = good die, 2 = defect die).
+
+    Returns:
+        np.ndarray of shape (64, 64), dtype float32, RAW values in {0, 1, 2}.
+        Caller must NOT normalize: the model divides by 2.0 inside forward().
+
+    Raises:
+        ValueError: wrong shape or a value outside {0, 1, 2}. The message is
+            safe to surface to an API client (no internals leaked).
+    """
+    try:
+        arr = np.asarray(grid)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"wafer is not array-like: {exc}") from exc
+
+    # Accept flat (4096,) or square (64, 64); reject everything else.
+    if arr.shape == WAFER_FLAT_SHAPE:
+        arr = arr.reshape(WAFER_SIDE, WAFER_SIDE)
+    elif arr.shape != (WAFER_SIDE, WAFER_SIDE):
+        raise ValueError(
+            f"wafer shape must be {WAFER_FLAT_SHAPE} (flat) or "
+            f"({WAFER_SIDE}, {WAFER_SIDE}) (square), got {arr.shape}"
+        )
+
+    # Same die-value contract as _wafer_values_ok on the Parquet gate.
+    if not np.isin(arr, list(ALLOWED_DIE_VALUES)).all():
+        bad = sorted(set(np.unique(arr).tolist()) - ALLOWED_DIE_VALUES)
+        raise ValueError(
+            f"die value(s) not in {sorted(ALLOWED_DIE_VALUES)}: {bad}"
+        )
+    
+    return arr.astype(np.float32)
