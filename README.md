@@ -290,34 +290,34 @@ MLflow registry stays host-side as the decision layer. Single-node by design: no
 
 ## Structure
 
-```text
-├── configs/ # default.yaml — single source of truth for hyperparameters/paths
-├── data/ # dataset (git-ignored), Medallion layers
-│ ├── bronze/ # immutable raw: LSWMD.pkl, LSWMD_clean.pkl
-│ ├── silver/ # wafers.parquet: 8-class, resized 64×64, NOT split
-│ └── gold/ # train/val/test parquet — what the models consume
-├── notebooks/ # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
-├── src/wm811k/ # installable pipeline package
-│ ├── config.py # YAML-driven Config (frozen dataclasses)
-│ ├── data.py # WaferDataset, domain-safe augmentation, loaders
-│ ├── pipeline.py # Medallion bronze→silver→gold + verify-gold gate
-│ ├── validation.py # Pandera schema gates (silver + gold) + check_wafer_grid
-│ ├── quality.py # die-preservation metric, resize/flatten_label
-│ ├── validate.py # CLI data quality gate
-│ ├── models.py # WaferCNN, WaferResNet18, build_model factory
-│ ├── engine.py # train/evaluate loops, MLflow logging, checkpointing
-│ ├── registry.py # MLflow registry: register / promote / compare / load_production
-│ ├── serve.py # FastAPI serving: /predict, /health, Grad-CAM (loads .pt)
-│ ├── train.py # CLI: python -m wm811k.train
-│ ├── evaluate.py # CLI: python -m wm811k.evaluate
-│ └── seed.py # reproducibility
-├── tests/ # pytest suite: contract tests (shapes, gates, API), no real data
-├── docs/ # IDEAS.md (deferred extensions, scope rationale)
-├── models/ # trained checkpoints (git-ignored)
-├── Dockerfile # serving image: model pulled from Release + SHA-verified
-├── docker-compose.yml # single-service serve on :8000
+```
+├── configs/            # default.yaml — hyperparameters/paths, single source of truth
+├── data/               # dataset (git-ignored), Medallion layers
+│   ├── bronze/         # immutable raw: LSWMD.pkl, LSWMD_clean.pkl
+│   ├── silver/         # wafers.parquet: 8-class, resized 64×64, NOT split
+│   └── gold/           # train/val/test parquet — what the models consume
+├── notebooks/          # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
+├── src/wm811k/         # installable pipeline package
+│   ├── config.py       # YAML-driven Config (frozen dataclasses)
+│   ├── data.py         # WaferDataset, domain-safe augmentation, loaders
+│   ├── pipeline.py     # Medallion bronze→silver→gold + verify-gold gate
+│   ├── validation.py   # Pandera schema gates (silver + gold) + check_wafer_grid
+│   ├── quality.py      # die-preservation metric, resize/flatten_label
+│   ├── validate.py     # CLI data quality gate
+│   ├── models.py       # WaferCNN, WaferResNet18, build_model factory
+│   ├── engine.py       # train/evaluate loops, MLflow logging, checkpointing
+│   ├── registry.py     # MLflow registry: register / promote / compare / load_production
+│   ├── serve.py        # FastAPI serving: /predict, /health, Grad-CAM (loads .pt)
+│   ├── train.py        # CLI: python -m wm811k.train
+│   ├── evaluate.py     # CLI: python -m wm811k.evaluate
+│   └── seed.py         # reproducibility
+├── tests/              # pytest suite: contract tests (shapes, gates, API), no real data
+├── docs/               # IDEAS.md (deferred extensions, scope rationale)
+├── models/             # trained checkpoints (git-ignored)
+├── Dockerfile          # serving image: model pulled from Release + SHA-verified
+├── docker-compose.yml  # single-service serve on :8000
 ├── .dockerignore
-├── Makefile # install / silver / gold / verify-gold / validate / train / evaluate / serve / test / lint
+├── Makefile            # install / silver / gold / verify-gold / validate / train / evaluate / serve / test / lint
 ├── pyproject.toml
 └── uv.lock
 ```
