@@ -13,6 +13,29 @@ Edge-Ring, Loc, Scratch, Random, Near-full) is a key signal for yield analysis a
 project treats the ML model as one component inside a maintainable data pipeline — the same way it would run in a fab
 environment.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    B[Bronze: raw LSWMD] --> S[Silver: 64x64, 8-class]
+    S --> G[Gold: train/val/test<br/>SHA-1 fingerprinted splits]
+    G --> T[Train<br/>val_loss selection]
+    T --> C[Checkpoint .pt<br/>+ per-class metrics]
+    C --> R[Registry: register version]
+    R --> CMP[compare<br/>per-class F1 deltas]
+    CMP --> H{Human gate<br/>reviews per-class}
+    H -->|promote| P[production alias]
+    P --> REL[GitHub Release<br/>.pt + SHA-256]
+    REL --> SV[Docker serve<br/>/predict + Grad-CAM]
+    style H fill: #f9e79f, stroke: #b7950b
+    style G stroke-dasharray: 5 5
+```
+
+Data flows through Medallion layers to fixed, fingerprinted splits, so every model is compared on the *same* test set.
+Training selects on validation loss; the registry keeps promotion a **manual, per-class human gate** — an aggregate
+macro-F1 gain can hide a per-class regression. The promoted checkpoint is published to a GitHub Release and served
+single-node via FastAPI.
+
 ## Dataset
 
 - **Source:** WM-811K (LSWMD) — 811,457 wafer maps from real-world fabrication, ~172,950 labeled across 9 classes
@@ -57,10 +80,10 @@ unzip ~/Downloads/archive.zip -d data/bronze/
 3. **Modeling** (`03_train.ipynb`) — baseline CNN → ResNet-18 from scratch → + domain-safe augmentation (no ImageNet
    pretraining: wafer maps are single-channel discrete-valued images, a different domain from natural images).
    Checkpoint selection and early stopping use val_loss rather than val_macro_f1: macro-F1 is noisy
-   epoch-to-epoch on this validation set (tiny classes like Near-full, n=22, make it jump in steps), and
-   across three selection strategies val_loss-for-both tested best — 0.835 vs 0.831 (F1 for both) and
-   0.827 (F1 checkpointing, val_loss stopping) — though the gap is modest; val_loss is kept for stability
-   rather than for a large measured win. Class imbalance handled at train time via WeightedRandomSampler;
+   epoch-to-epoch on this validation set (tiny classes like Near-full, n=22, make it jump in steps).
+   Across selection strategies the differences were modest; val_loss is kept for stability of the
+   selection criterion rather than for a large measured win. Class imbalance handled at train time via
+   WeightedRandomSampler;
    experiments tracked with MLflow (params/metrics/model per run); evaluated with per-class metrics +
    confusion matrix on a natural-distribution test set, not aggregate accuracy.
 4. **Pipeline packaging** — the notebook pipeline is refactored into an installable package
@@ -118,8 +141,9 @@ stage (defective vs. not) would precede this classifier.
 
 ## Stack
 
-Python 3.12, uv, PyTorch (CUDA), MLflow (experiment tracking + model registry), pandas, scikit-learn, PyArrow/Parquet, matplotlib,
-seaborn.
+Python 3.12, uv, PyTorch (CUDA), MLflow (experiment tracking + model registry), pandas, scikit-learn, PyArrow/Parquet,
+matplotlib,
+seaborn, FastAPI + Docker (serving).
 
 ## Why batch — a deliberate architecture decision
 
@@ -182,7 +206,7 @@ uv run python -m wm811k.registry promote --version <version>
 `register` creates a version but never aliases it to `@production`. Promotion is a deliberate
 manual command because an aggregate macro-F1 gain can mask a per-class regression — `compare`
 surfaces exactly that (per-class F1 delta, with regressions flagged) so a human decides before
-a model goes live. Serving (T10) loads whatever version currently holds the `@production` alias.
+a model goes live. Serving loads whatever version currently holds the `@production` alias.
 The rationale, and why automatic promotion is rejected, is recorded in `docs/IDEAS.md` (#6/#7).
 
 ## Serving
@@ -266,29 +290,34 @@ MLflow registry stays host-side as the decision layer. Single-node by design: no
 
 ## Structure
 
-```
-├── configs/      # default.yaml — single source of truth for hyperparameters/paths
-├── data/         # dataset (git-ignored), Medallion layers
-│   ├── bronze/       # immutable raw: LSWMD.pkl, LSWMD_clean.pkl
-│   ├── silver/       # wafers.parquet: 8-class, resized 64×64, NOT split
-│   └── gold/         # train/val/test parquet — what the models consume
-├── notebooks/    # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
-├── src/wm811k/   # installable pipeline package
-│   ├── config.py     # YAML-driven Config (frozen dataclasses)
-│   ├── data.py       # WaferDataset, domain-safe augmentation, loaders
-│   ├── pipeline.py   # Medallion bronze→silver→gold + verify-gold gate
-│   ├── validation.py # Pandera schema gates (silver + gold)
-│   ├── quality.py    # die-preservation metric, resize/flatten_label
-│   ├── validate.py   # CLI data quality gate
-│   ├── models.py     # WaferCNN, WaferResNet18, build_model factory
-│   ├── engine.py     # train/evaluate loops, MLflow logging, checkpointing
-│   ├── registry.py   # MLflow registry: register / promote / compare / load_production
-│   ├── train.py      # CLI: python -m wm811k.train
-│   ├── evaluate.py   # CLI: python -m wm811k.evaluate
-│   └── seed.py       # reproducibility
-├── docs/         # IDEAS.md (deferred extensions, scope rationale)
-├── models/       # trained checkpoints (git-ignored)
-├── Makefile      # install / silver / gold / verify-gold / validate / train / evaluate / test / lint
+```text
+├── configs/ # default.yaml — single source of truth for hyperparameters/paths
+├── data/ # dataset (git-ignored), Medallion layers
+│ ├── bronze/ # immutable raw: LSWMD.pkl, LSWMD_clean.pkl
+│ ├── silver/ # wafers.parquet: 8-class, resized 64×64, NOT split
+│ └── gold/ # train/val/test parquet — what the models consume
+├── notebooks/ # 01_eda.ipynb, 02_preprocessing.ipynb, 03_train.ipynb
+├── src/wm811k/ # installable pipeline package
+│ ├── config.py # YAML-driven Config (frozen dataclasses)
+│ ├── data.py # WaferDataset, domain-safe augmentation, loaders
+│ ├── pipeline.py # Medallion bronze→silver→gold + verify-gold gate
+│ ├── validation.py # Pandera schema gates (silver + gold) + check_wafer_grid
+│ ├── quality.py # die-preservation metric, resize/flatten_label
+│ ├── validate.py # CLI data quality gate
+│ ├── models.py # WaferCNN, WaferResNet18, build_model factory
+│ ├── engine.py # train/evaluate loops, MLflow logging, checkpointing
+│ ├── registry.py # MLflow registry: register / promote / compare / load_production
+│ ├── serve.py # FastAPI serving: /predict, /health, Grad-CAM (loads .pt)
+│ ├── train.py # CLI: python -m wm811k.train
+│ ├── evaluate.py # CLI: python -m wm811k.evaluate
+│ └── seed.py # reproducibility
+├── tests/ # pytest suite: contract tests (shapes, gates, API), no real data
+├── docs/ # IDEAS.md (deferred extensions, scope rationale)
+├── models/ # trained checkpoints (git-ignored)
+├── Dockerfile # serving image: model pulled from Release + SHA-verified
+├── docker-compose.yml # single-service serve on :8000
+├── .dockerignore
+├── Makefile # install / silver / gold / verify-gold / validate / train / evaluate / serve / test / lint
 ├── pyproject.toml
 └── uv.lock
 ```
