@@ -1,8 +1,10 @@
-.PHONY: help install notebook mlflow-server train evaluate gradcam validate test lint silver gold verify-gold
+.PHONY: help install notebook mlflow-server train evaluate gradcam validate serve test lint silver gold verify-gold
 
 UV ?= uv
 MLFLOW_HOST ?= 0.0.0.0
 MLFLOW_PORT ?= 5000
+SERVE_HOST ?= 0.0.0.0
+SERVE_PORT ?= 8000
 MLFLOW_BACKEND_STORE_URI ?= sqlite:///$(CURDIR)/mlflow.db
 MLFLOW_ARTIFACT_ROOT ?= $(CURDIR)/mlruns
 CONFIG ?= configs/default.yaml
@@ -29,6 +31,7 @@ help:
 	@printf "  make evaluate        Evaluate a checkpoint (CHECKPOINT=models/...pt)\n"
 	@printf "  make gradcam         Generate Grad-CAM grids from a checkpoint\n"
 	@printf "  make validate        Run data quality gates + die-preservation report\n"
+	@printf "  make serve           Run the FastAPI server locally (SERVE_HOST/PORT)\n"
 	@printf "  make silver          Build the silver layer from bronze\n"
 	@printf "  make gold            Build the gold layer from silver\n"
 	@printf "  make verify-gold     Rebuild gold from silver and compare (gate)\n"
@@ -60,6 +63,9 @@ gradcam:
 
 validate:
 	$(RUN) python -m wm811k.validate --config $(CONFIG)
+
+serve:
+	$(RUN) python -m wm811k.serve --config $(CONFIG) --model $(MODEL) --checkpoint $(CHECKPOINT) --host $(SERVE_HOST) --port $(SERVE_PORT)
 
 test:
 	$(RUN) pytest

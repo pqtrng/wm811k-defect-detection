@@ -185,6 +185,85 @@ surfaces exactly that (per-class F1 delta, with regressions flagged) so a human 
 a model goes live. Serving (T10) loads whatever version currently holds the `@production` alias.
 The rationale, and why automatic promotion is rejected, is recorded in `docs/IDEAS.md` (#6/#7).
 
+## Serving
+
+Single-node FastAPI + Docker serving layer for the production classifier (inference + optional Grad-CAM).
+
+### Docker quickstart
+
+```bash
+docker compose up -d
+curl -s localhost:8000/health | jq
+docker compose down
+```
+
+`/health` returns:
+
+```json
+{
+  "status": "ok",
+  "model_loaded": true,
+  "device": "cpu",
+  "num_classes": 8
+}
+```
+
+### API
+
+- `GET /health` — liveness + what actually loaded.
+- `POST /predict` — classify one wafer map.
+- `POST /predict?gradcam=true` — classify + return a 64×64 Grad-CAM heatmap (values in [0,1]).
+
+Input contract (same for both predict paths):
+
+- Send RAW wafer maps (do not normalize); die values must be in `{0,1,2}`.
+- Shape can be either a flat 4096-length list or a nested 64×64 list.
+- Bad shape/value returns HTTP 422.
+
+Example: `/predict` (flat 4096):
+
+```bash
+python - <<'PY' | curl -s -X POST localhost:8000/predict -H 'Content-Type: application/json' -d @- | jq
+import json
+# 4096 RAW die values in {0,1,2}; do not normalize before sending.
+wafer = [0] * 4096
+wafer[123] = 2
+print(json.dumps({"wafer": wafer}))
+PY
+```
+
+Response shape:
+
+- `predicted_class` (label string)
+- `class_index` (0–7)
+- `probabilities` (full 8-class dict)
+
+Example: `/predict?gradcam=true` (nested 64×64):
+
+```bash
+python - <<'PY' | curl -s -X POST 'localhost:8000/predict?gradcam=true' -H 'Content-Type: application/json' -d @- | jq
+import json
+wafer = [[0] * 64 for _ in range(64)]
+wafer[10][20] = 2
+print(json.dumps({"wafer": wafer}))
+PY
+```
+
+Response includes the fields above plus `gradcam` (64×64 array in [0,1]). If `gradcam=true` is requested on a model
+without a `layer4` (e.g. the plain CNN), the API returns HTTP 501.
+
+### Local run (no Docker)
+
+```bash
+make serve
+```
+
+Design notes: serving loads one shared `.pt` checkpoint once at startup and uses it for both `/predict` and
+`?gradcam=true` (no `torch.export` GraphModule: Grad-CAM must hook a real `layer4`). Request validation reuses
+`check_wafer_grid` (“one rule set, two doors”) so the API enforces the same shape/value contract as the Parquet gates.
+The Docker image pulls the canonical checkpoint from the GitHub Release and verifies its SHA-256 at build time; the
+MLflow registry stays host-side as the decision layer. Single-node by design: no Kubernetes and no volume mounts.
+
 ## Structure
 
 ```
