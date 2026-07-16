@@ -1,0 +1,36 @@
+# Build context hygiene: without this, docker sends ~11GB (.venv 7G + data 4G).
+# The image installs deps fresh via uv and downloads the model from a GitHub
+# Release at build time, so NONE of these local dirs belong in the context.
+
+# Virtualenv -- reinstalled inside the image
+.venv/
+
+# Data -- never needed for serving (inference takes wafers via the API)
+data/
+
+# MLflow local store -- serving loads the .pt from Release, not from mlruns
+mlruns/
+mlflow.db
+
+# Model checkpoints -- pulled from the GitHub Release during build, not COPYed
+# (keeps the build portable and avoids baking the canonical .pt via context)
+models/
+*.pt
+
+# Git + CI + caches
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Notebooks + docs artifacts not needed at runtime
+notebooks/
+docs/figures/
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
