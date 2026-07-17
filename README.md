@@ -17,18 +17,41 @@ environment.
 
 ```mermaid
 flowchart TD
-    B[Bronze: raw LSWMD] --> S[Silver: 64x64, 8-class]
-    S --> G[Gold: train/val/test<br/>SHA-1 fingerprinted splits]
-    G --> T[Train<br/>val_loss selection]
-    T --> C[Checkpoint .pt<br/>+ per-class metrics]
-    C --> R[Registry: register version]
-    R --> CMP[compare<br/>per-class F1 deltas]
-    CMP --> H{Human gate<br/>reviews per-class}
-    H -->|promote| P[production alias]
-    P --> REL[GitHub Release<br/>.pt + SHA-256]
-    REL --> SV[Docker serve<br/>/predict + Grad-CAM]
-    style H fill: #f9e79f, stroke: #b7950b
-    style G stroke-dasharray: 5 5
+    B["Bronze<br/>LSWMD.pkl · ~2.1 GB"]
+    S["Silver<br/>25,519 · 64×64 · 8-class"]
+    G["Gold<br/>SHA-1 fingerprinted"]
+
+    B -->|drop none + resize| S
+    S -->|stratified split| G
+
+    G --> TR["train · 70%<br/>17,863"]
+    G --> VA["val · 15%<br/>3,828"]
+    G --> TE["test · 15%<br/>3,828"]
+
+    TR & VA --> T["Train<br/>val_loss selection"]
+    TE --> E["Evaluate<br/>per-class metrics"]
+
+    T --> C["Checkpoint .pt"] --> R["Registry<br/>register version"]
+    R & E --> CMP["compare<br/>per-class F1 deltas"]
+    CMP --> H{"Human gate"}
+    H -->|promote| P["production alias"]
+    P --> REL["GitHub Release<br/>.pt + SHA-256"]
+    REL --> SV["Docker serve<br/>/predict + Grad-CAM"]
+
+    classDef bronze fill:#f0e0d0,stroke:#a67c52
+    classDef silver fill:#eceff1,stroke:#78909c
+    classDef gold fill:#fff3cd,stroke:#c9a227
+    classDef train fill:#d5f5e3,stroke:#27ae60
+    classDef val fill:#fdebd0,stroke:#e67e22
+    classDef test fill:#fadbd8,stroke:#c0392b
+    classDef gate fill:#f9e79f,stroke:#b7950b
+    class B bronze
+    class S silver
+    class G gold
+    class TR train
+    class VA val
+    class TE test
+    class H gate
 ```
 
 Data flows through Medallion layers to fixed, fingerprinted splits, so every model is compared on the *same* test set.
@@ -53,7 +76,7 @@ The dataset is not tracked in Git. After cloning, download and place it manually
 # 2. Unzip LSWMD.pkl into the bronze layer
 mkdir -p data/bronze
 unzip ~/Downloads/archive.zip -d data/bronze/
-# Expected: data/bronze/LSWMD.pkl  (~214 MB uncompressed)
+# Expected: data/bronze/LSWMD.pkl  (~2.1 GB uncompressed; zip is ~157 MB)
 ```
 
 > Note: `LSWMD.pkl` is a legacy Python 2 / old-pandas pickle. The EDA notebook handles it
